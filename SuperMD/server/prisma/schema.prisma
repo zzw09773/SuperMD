@@ -11,13 +11,17 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  documents Document[]
-  folders   Folder[]
+  id                String              @id @default(cuid())
+  email             String              @unique
+  password          String              // Hashed password
+  name              String?
+  avatar            String?             // Avatar URL
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  documents         Document[]
+  folders           Folder[]
+  projects          Project[]
+  sharedDocuments   DocumentPermission[] // Documents shared with this user
 }
 
 model Folder {
@@ -37,23 +41,58 @@ model Folder {
   @@index([parentId])
 }
 
+model Project {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  color       String     @default("#3498db")
+  isExpanded  Boolean    @default(true) // UI state
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId])
+}
+
 model Document {
-  id           String    @id @default(cuid())
+  id           String               @id @default(cuid())
   title        String
-  content      String    @default("")
-  tags         String    @default("")
+  content      String               @default("")
+  tags         String               @default("")
   folderId     String?
-  folder       Folder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folder       Folder?              @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  projectId    String?              // New: Project association
+  project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
   userId       String
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissions  DocumentPermission[] // Sharing permissions
   versions     Version[]
-  createdAt    DateTime  @default(now())
-  lastEditedAt DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  isPublic     Boolean              @default(false) // Public access
+  createdAt    DateTime             @default(now())
+  lastEditedAt DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   @@index([userId])
   @@index([folderId])
+  @@index([projectId])
   @@index([lastEditedAt])
+}
+
+model DocumentPermission {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission String   @default("read") // "read" or "write"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([documentId, userId]) // One permission per user per document
+  @@index([documentId])
+  @@index([userId])
 }
 
 model Version {
