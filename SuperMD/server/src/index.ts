@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import authRouter from './routes/auth';
 import documentsRouter from './routes/documents';
 import foldersRouter from './routes/folders';
 import chatRouter from './routes/chat';
@@ -137,6 +138,7 @@ app.get('/api', (_req: Request, res: Response) => {
 });
 
 // Register resource routes
+app.use('/api/auth', authRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/chat', chatRouter);

@@ -5,7 +5,9 @@
       "Bash(cat:*)",
       "Bash(npm install:*)",
       "Bash(curl http://localhost:3000/api/research/status)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma migrate dev:*)"
     ],
     "deny": [],
     "ask": []
