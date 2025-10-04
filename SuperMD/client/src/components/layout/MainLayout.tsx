@@ -9,7 +9,7 @@ interface MainLayoutProps {
   onDocumentSelect: (id: string | null) => void;
 }
 
-const MainLayout = ({ currentDocumentId }: MainLayoutProps) => {
+const MainLayout = ({ currentDocumentId, onDocumentSelect }: MainLayoutProps) => {
   const [showChat, setShowChat] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [markdown, setMarkdown] = useState('');
