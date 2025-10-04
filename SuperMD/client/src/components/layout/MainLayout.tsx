@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import MarkdownEditor from '../editor/MarkdownEditor';
 import ChatBotPanel from '../chat/ChatBotPanel';
+import ProjectSidebar from '../sidebar/ProjectSidebar';
 import { FileDown, FileText, FileCode, FileType, Download } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -55,13 +56,11 @@ const MainLayout = ({ currentDocumentId }: MainLayoutProps) => {
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar - Document List */}
-      <aside className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-        <div className="p-4">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">SuperMD</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Collaborative Markdown Editor</p>
-        </div>
-      </aside>
+      {/* Sidebar - Project & Document Management */}
+      <ProjectSidebar
+        currentDocumentId={currentDocumentId}
+        onDocumentSelect={onDocumentSelect}
+      />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">

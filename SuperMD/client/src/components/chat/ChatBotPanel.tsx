@@ -1,15 +1,20 @@
 import { useState } from 'react';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, MessageSquare, Search } from 'lucide-react';
 import useChat from '../../hooks/useChat';
 
-const ChatBotPanel = () => {
+interface ChatBotPanelProps {
+  documentContent?: string;
+}
+
+const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
   const [input, setInput] = useState('');
+  const [mode, setMode] = useState<'chat' | 'research'>('chat');
   const { messages, sendMessage, isLoading } = useChat();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim()) {
-      sendMessage(input);
+      sendMessage(input, mode, documentContent);
       setInput('');
     }
   };
@@ -17,7 +22,40 @@ const ChatBotPanel = () => {
   return (
     <div className="w-80 border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">AI Assistant</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">AI Assistant</h2>
+
+        {/* Mode Toggle */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode('chat')}
+            className={`flex-1 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              mode === 'chat'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Chat
+          </button>
+          <button
+            onClick={() => setMode('research')}
+            className={`flex-1 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+              mode === 'research'
+                ? 'bg-purple-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            <Search className="w-4 h-4" />
+            Research
+          </button>
+        </div>
+
+        {/* Mode Description */}
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          {mode === 'chat'
+            ? '💬 快速對話模式 (GPT-5)'
+            : '🔍 深度研究模式 (Google + LangGraph)'}
+        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
