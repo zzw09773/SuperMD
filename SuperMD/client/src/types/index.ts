@@ -34,8 +34,11 @@ export interface Version {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  id: string;
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  timestamp: Date;
+  sources?: string[];
 }
 
 export interface SaveStatus {

@@ -7,19 +7,30 @@ const useChat = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const sendMessage = useCallback(async (content: string) => {
-    const userMessage: ChatMessage = { role: 'user', content };
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content,
+      timestamp: new Date(),
+    };
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
       const response = await axios.post('/api/chat', {
-        messages: [...messages, userMessage],
+        messages: [...messages, userMessage].map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
         stream: false,
       });
 
       const assistantMessage: ChatMessage = {
+        id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: response.data.message,
+        timestamp: new Date(),
+        sources: response.data.sources,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -28,8 +39,10 @@ const useChat = () => {
       setMessages(prev => [
         ...prev,
         {
+          id: `error-${Date.now()}`,
           role: 'assistant',
           content: 'Sorry, I encountered an error. Please try again.',
+          timestamp: new Date(),
         },
       ]);
     } finally {

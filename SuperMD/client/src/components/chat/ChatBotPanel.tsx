@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Bot, User } from 'lucide-react';
 import useChat from '../../hooks/useChat';
 
 const ChatBotPanel = () => {
@@ -20,16 +21,63 @@ const ChatBotPanel = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, idx) => (
+        {messages.map((message) => (
           <div
-            key={idx}
-            className={`p-3 rounded-lg ${
-              msg.role === 'user'
-                ? 'bg-blue-100 dark:bg-blue-900 ml-auto max-w-[80%]'
-                : 'bg-gray-100 dark:bg-gray-700 mr-auto max-w-[80%]'
+            key={message.id}
+            className={`flex gap-3 ${
+              message.role === 'user' ? 'justify-end' :
+              message.role === 'system' ? 'justify-center' :
+              'justify-start'
             }`}
           >
-            <p className="text-sm text-gray-800 dark:text-gray-200">{msg.content}</p>
+            {message.role === 'assistant' && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-blue-400" />
+              </div>
+            )}
+            <div
+              className={`rounded-lg px-4 py-2 ${
+                message.role === 'user'
+                  ? 'bg-blue-600 text-white max-w-[80%]'
+                  : message.role === 'system'
+                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs max-w-[90%]'
+                  : 'bg-[#2d2d2d] text-gray-200 max-w-[80%]'
+              }`}
+            >
+              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {/* Show sources for research results */}
+              {message.sources && message.sources.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <p className="text-xs font-semibold text-gray-400 mb-2">📚 參考來源：</p>
+                  <div className="space-y-1">
+                    {message.sources.slice(0, 5).map((source, idx) => (
+                      <a
+                        key={idx}
+                        href={source}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs text-blue-400 hover:text-blue-300 hover:underline truncate"
+                      >
+                        {idx + 1}. {source}
+                      </a>
+                    ))}
+                    {message.sources.length > 5 && (
+                      <p className="text-xs text-gray-500">
+                        ... 還有 {message.sources.length - 5} 個來源
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              <p className="text-xs mt-1 opacity-50">
+                {message.timestamp.toLocaleTimeString()}
+              </p>
+            </div>
+            {message.role === 'user' && (
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-500/20 flex items-center justify-center">
+                <User className="w-5 h-5 text-gray-400" />
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (

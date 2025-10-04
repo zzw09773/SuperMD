@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import documentsRouter from './routes/documents';
 import foldersRouter from './routes/folders';
 import chatRouter from './routes/chat';
+import researchRouter from './routes/research';
 
 // Load environment variables
 dotenv.config();
@@ -139,6 +140,7 @@ app.get('/api', (_req: Request, res: Response) => {
 app.use('/api/documents', documentsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/research', researchRouter);
 
 // Start server
 httpServer.listen(PORT, () => {
