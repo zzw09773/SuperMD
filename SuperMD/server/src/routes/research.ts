@@ -3,12 +3,12 @@ import { streamResearchResponse } from '../agents/researchAgent';
 
 const router = Router();
 
-// Research query endpoint with streaming
-router.post('/query', async (req: Request, res: Response): Promise<void> => {
+// Research query endpoint with streaming (GET for SSE compatibility)
+router.get('/query', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { query, documentContent } = req.body;
+    const { query, documentContent } = req.query;
 
-    if (!query) {
+    if (!query || typeof query !== 'string') {
       res.status(400).json({ error: 'Query is required' });
       return;
     }
@@ -23,8 +23,8 @@ router.post('/query', async (req: Request, res: Response): Promise<void> => {
 
     // Stream response with metadata
     const result = await streamResearchResponse(
-      query,
-      documentContent,
+      query as string,
+      documentContent as string | undefined,
       (data) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
       }

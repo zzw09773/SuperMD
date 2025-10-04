@@ -24,8 +24,8 @@ export const handleGPT5Chat = async (req: Request, res: Response): Promise<void>
   const {
     messages,
     model = 'gpt-5-mini', // Default to gpt-5-mini for cost efficiency
-    temperature = 0.7,
-    max_tokens = 2000,
+    temperature = 1, // GPT-5 only supports temperature = 1
+    max_completion_tokens = 2000, // GPT-5 uses max_completion_tokens instead of max_tokens
     stream = true,
     verbosity = 'medium',
     reasoning_effort = 'medium',
@@ -50,7 +50,7 @@ export const handleGPT5Chat = async (req: Request, res: Response): Promise<void>
         model,
         messages,
         temperature,
-        max_tokens,
+        max_completion_tokens, // GPT-5 uses max_completion_tokens
         stream: true,
         // GPT-5 specific parameters
         ...(model.startsWith('gpt-5') && {
@@ -74,7 +74,7 @@ export const handleGPT5Chat = async (req: Request, res: Response): Promise<void>
         model,
         messages,
         temperature,
-        max_tokens,
+        max_completion_tokens, // GPT-5 uses max_completion_tokens
         stream: false,
         // GPT-5 specific parameters
         ...(model.startsWith('gpt-5') && {

@@ -78,11 +78,23 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
                 message.role === 'user'
                   ? 'bg-blue-600 text-white max-w-[80%]'
                   : message.role === 'system'
-                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs max-w-[90%]'
+                  ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 shadow-lg shadow-purple-500/20 animate-pulse'
                   : 'bg-[#2d2d2d] text-gray-200 max-w-[80%]'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              {/* Show reasoning with marquee/typing effect */}
+              {message.metadata?.type === 'reasoning' ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
+                  <p className="text-xs font-medium text-purple-200">{message.content}</p>
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
               {/* Show sources for research results */}
               {message.sources && message.sources.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-700">
