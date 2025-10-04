@@ -1,132 +1,109 @@
 # SuperMD
 
-A modern, collaborative Markdown editor with AI assistance and real-time collaboration features.
+A modern, collaborative Markdown editor with dual-mode AI assistance (GPT-5 Chat + Deep Research) and real-time collaboration features.
 
-## Features
+## ✨ Features
 
-- 📝 **Rich Markdown Editor** - Powered by CodeMirror with syntax highlighting
-- 🤝 **Real-time Collaboration** - Multiple users can edit documents simultaneously
-- 🤖 **AI Assistant** - Integrated GPT-powered chatbot for writing assistance
-- 📊 **Mermaid Diagrams** - Create flowcharts, diagrams, and visualizations
+### 🎯 Core Features
+- 📝 **Rich Markdown Editor** - Powered by CodeMirror 6 with syntax highlighting
+- 🤝 **Real-time Collaboration** - Multiple users can edit documents simultaneously with Y.js CRDT
+- 🎨 **Live Preview** - See your formatted markdown in real-time (split view)
 - 💾 **Auto-save** - Never lose your work with automatic saving
-- 📁 **Folder Organization** - Organize documents in a hierarchical structure
-- 🎨 **Live Preview** - See your formatted markdown in real-time
-- 📤 **Export** - Export to MD, HTML, PDF, DOCX, and TXT formats
-- 🔍 **Search** - Full-text search across all documents
-- 📜 **Version History** - Track and restore previous versions
+- 📤 **Multi-format Export** - Export to MD, HTML, PDF, DOCX, and TXT formats
 
-## Tech Stack
+### 🤖 Dual-Mode AI Assistant
+- 💬 **Chat Mode** - Fast conversations with GPT-5
+- 🔍 **Research Mode** - Deep research with Google Custom Search + LangGraph
+  - Real-time reasoning process display (animated marquee)
+  - Tool call tracking (Google Search, Calculator, Document Search)
+  - Automatic source citation and references
 
-### Frontend
-- React + TypeScript
-- Vite
-- CodeMirror 6
-- TailwindCSS
-- Socket.IO Client
-- Y.js (CRDT for collaboration)
+### 📁 Project Management
+- 🗂️ **ChatGPT-style Organization** - Organize documents into projects
+- 🖱️ **Drag & Drop** - Move documents between projects and ungrouped section
+- 📋 **Visual Feedback** - Expandable folders with icons and hover effects
 
-### Backend
-- Node.js + Express
-- TypeScript
-- Prisma ORM
-- SQLite
-- Socket.IO
-- OpenAI API
+### 🛠️ Editor Toolbar
+- **7 Formatting Buttons**: Bold, Italic, Code, Link, Image, Bullet List, Numbered List
+- **Preview Toggle**: Show/hide preview pane
+- **Export Dropdown**: Quick access to all export formats
 
-## Getting Started
+### 📊 Status Indicators
+- 💚 **Connection Status** - Real-time connection state
+- 👥 **Active Users** - See how many users are collaborating
+- ⏰ **Save Status** - Last saved timestamp
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
+- OpenAI API Key (for GPT-5)
+- Google Custom Search API credentials (optional, for Research mode)
 
-### Installation
+### Quick Start
 
-1. Clone the repository:
 ```bash
+# Clone and install
 git clone https://github.com/yourusername/SuperMD.git
 cd SuperMD
-```
 
-2. Install dependencies:
-```bash
-npm install
+# Install dependencies
 cd client && npm install
 cd ../server && npm install
-```
 
-3. Set up environment variables:
-```bash
+# Configure environment
 cd server
 cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
+# Edit .env with your API keys
+
+# Start backend (Terminal 1)
+cd server && npm run dev
+
+# Start frontend (Terminal 2)
+cd client && npm run dev
 ```
 
-4. Initialize the database:
-```bash
-cd server
-npx prisma migrate dev
-npx prisma db seed
-```
+**Access the app**: http://localhost:5174
 
-5. Start the development servers:
-```bash
-# From root directory
-npm run dev
-```
+## 📋 Next Steps
 
-The application will be available at:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000
+查看 [PROGRESS.md](./PROGRESS.md) 獲取：
+- ✅ 完整功能清單與進度
+- 🐛 已修復的問題記錄
+- 🚀 Phase 4-7 Roadmap
 
-## Project Structure
+### Phase 4: 資料持久化 (下一步)
+- [ ] Prisma + SQLite 資料庫整合
+- [ ] 用戶認證系統
+- [ ] 文件權限管理
 
-```
-SuperMD/
-├── client/                 # React frontend
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── types/         # TypeScript types
-│   │   └── utils/         # Utility functions
-│   └── package.json
-├── server/                # Express backend
-│   ├── src/
-│   │   ├── routes/        # API routes
-│   │   ├── services/      # Business logic
-│   │   └── lib/           # Utilities
-│   ├── prisma/            # Database schema
-│   └── package.json
-├── shared/                # Shared types and utilities
-└── docs/                  # Documentation
+### Phase 5: 進階功能
+- [ ] 版本歷史 (Git-like)
+- [ ] PWA 離線支援
+- [ ] 多語言介面 (i18n)
 
-```
+### Phase 6: 效能優化
+- [ ] React 虛擬化
+- [ ] 圖片 CDN
+- [ ] 程式碼分割
 
-## API Endpoints
+## 🤝 Contributing
 
-- `GET /api/documents` - Get all documents
-- `POST /api/documents` - Create a new document
-- `PUT /api/documents/:id` - Update a document
-- `DELETE /api/documents/:id` - Delete a document
-- `GET /api/folders` - Get all folders
-- `POST /api/chat` - Chat with AI assistant
+歡迎貢獻！請隨時提交 Pull Request。
 
-## WebSocket Events
+## 📄 License
 
-- `join-document` - Join a document room
-- `leave-document` - Leave a document room
-- `sync-update` - Sync document changes
-- `awareness-update` - Sync cursor positions
+MIT License
 
-## Contributing
+## 🙏 Acknowledgments
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- OpenAI GPT-5
+- Google Custom Search API
+- LangChain/LangGraph
+- React + Vite
+- Claude Code 🤖
 
-## License
+---
 
-MIT
-
-## Acknowledgments
-
-- Inspired by HackMD and CodiMD
-- Built with modern web technologies
-- Powered by OpenAI GPT models
+**Status**: ✅ Phase 1-3 完成 | **Version**: 0.1.0 | **Updated**: 2025-10-04
