@@ -2,18 +2,26 @@ import { useState, useRef, useEffect } from 'react';
 import MarkdownEditor from '../editor/MarkdownEditor';
 import ChatBotPanel from '../chat/ChatBotPanel';
 import ProjectSidebar from '../sidebar/ProjectSidebar';
-import { FileDown, FileText, FileCode, FileType, Download } from 'lucide-react';
+import { FileDown, FileText, FileCode, FileType, Download, LogOut, User } from 'lucide-react';
 
 interface MainLayoutProps {
   currentDocumentId: string | null;
   onDocumentSelect: (id: string | null) => void;
+  user: any;
+  onLogout: () => void;
 }
 
-const MainLayout = ({ currentDocumentId, onDocumentSelect }: MainLayoutProps) => {
+const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: MainLayoutProps) => {
   const [showChat, setShowChat] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [markdown, setMarkdown] = useState('');
   const editorRef = useRef<{ getContent: () => string } | null>(null);
+
+  const handleNewDocument = () => {
+    // Create a new document ID
+    const newDocId = `doc-${Date.now()}`;
+    onDocumentSelect(newDocId);
+  };
 
   const handleExport = async (format: 'md' | 'html' | 'pdf' | 'docx' | 'txt') => {
     const content = editorRef.current?.getContent() || '';
@@ -69,6 +77,7 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect }: MainLayoutProps) =>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
+                onClick={handleNewDocument}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
                 New Document
@@ -100,12 +109,31 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect }: MainLayoutProps) =>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* User Info */}
+              <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+                <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  {user?.name || user?.email}
+                </span>
+              </div>
+
+              {/* AI Assistant Button */}
               <button
                 onClick={() => setShowChat(!showChat)}
                 className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
               >
                 {showChat ? 'Hide' : 'Show'} AI Assistant (GPT-5)
+              </button>
+
+              {/* Logout Button */}
+              <button
+                onClick={onLogout}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 flex items-center gap-2"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
               </button>
             </div>
           </div>

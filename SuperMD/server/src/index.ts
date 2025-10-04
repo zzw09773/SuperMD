@@ -8,6 +8,7 @@ import documentsRouter from './routes/documents';
 import foldersRouter from './routes/folders';
 import chatRouter from './routes/chat';
 import researchRouter from './routes/research';
+import exportRouter from './routes/export';
 
 // Load environment variables
 dotenv.config();
@@ -143,6 +144,7 @@ app.use('/api/documents', documentsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/research', researchRouter);
+app.use('/api/export', exportRouter);
 
 // Start server
 httpServer.listen(PORT, () => {
