@@ -1,0 +1,20 @@
+# Client build
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# Cache
+.eslintcache
