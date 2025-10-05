@@ -1,0 +1,22 @@
+SuperMD 產品規格文件
+
+產品名稱：SuperMD - 智能 Markdown 編輯器
+
+主要功能：
+1. 協作編輯 - 多人即時協作編輯 Markdown 文件
+2. AI 研究助手 - 整合 GPT-5 進行網路搜尋和研究
+3. 專案管理 - 組織文件到專案中，支援拖放操作
+4. 匯出功能 - 支援匯出為 PDF, DOCX, HTML, Markdown 等格式
+5. RAG 知識庫 - 上傳文件建立向量索引，智能問答
+
+技術架構：
+- 前端：React + TypeScript + Vite
+- 後端：Node.js + Express + TypeScript
+- 資料庫：SQLite (Prisma) + PostgreSQL (pgvector)
+- AI：OpenAI GPT-5 + LangChain
+- 即時協作：Socket.io
+
+定價方案：
+- 免費版：基本編輯功能
+- 專業版：$9.99/月 - 包含 AI 助手
+- 企業版：$29.99/月 - 包含 RAG 知識庫和無限儲存

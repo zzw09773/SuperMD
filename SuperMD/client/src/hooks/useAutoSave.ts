@@ -1,12 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { debounce } from '../utils/debounce';
 import type { SaveStatus } from '../types';
+import { documentAPI } from '../services/api';
 
 const useAutoSave = (documentId: string | null, content: string) => {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({
     status: 'saved',
     lastSaved: new Date(),
   });
+  const contentRef = useRef(content);
+
+  // Keep content ref updated
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
 
   const saveContent = useCallback(async () => {
     if (!documentId) return;
@@ -14,9 +21,16 @@ const useAutoSave = (documentId: string | null, content: string) => {
     setSaveStatus({ status: 'saving' });
 
     try {
-      // API call to save content would go here
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
-      
+      // Extract title from content (first # heading)
+      const match = contentRef.current.match(/^#\s+(.+)$/m);
+      const title = match ? match[1].trim() : 'Untitled';
+
+      // Save to backend
+      await documentAPI.update(documentId, {
+        content: contentRef.current,
+        title,
+      });
+
       setSaveStatus({
         status: 'saved',
         lastSaved: new Date(),

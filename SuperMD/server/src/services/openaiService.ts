@@ -50,14 +50,14 @@ export const handleGPT5Chat = async (req: Request, res: Response): Promise<void>
         model,
         messages,
         temperature,
-        max_completion_tokens, // GPT-5 uses max_completion_tokens
+        max_completion_tokens,
         stream: true,
         // GPT-5 specific parameters
         ...(model.startsWith('gpt-5') && {
           verbosity,
           reasoning_effort,
         }),
-      } as any); // Type assertion for GPT-5 params
+      } as any) as any; // Type assertion for GPT-5 params and stream
 
       for await (const chunk of streamResponse) {
         const content = chunk.choices[0]?.delta?.content || '';
@@ -74,7 +74,7 @@ export const handleGPT5Chat = async (req: Request, res: Response): Promise<void>
         model,
         messages,
         temperature,
-        max_completion_tokens, // GPT-5 uses max_completion_tokens
+        max_completion_tokens,
         stream: false,
         // GPT-5 specific parameters
         ...(model.startsWith('gpt-5') && {

@@ -38,7 +38,10 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  sources?: string[];
+  sources?: string[]; // Web search sources (URLs)
+  ragSources?: string[]; // RAG knowledge base sources (file names)
+  toolCalls?: any[];
+  metadata?: any;
 }
 
 export interface SaveStatus {

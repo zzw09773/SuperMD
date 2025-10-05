@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User, MessageSquare, Search } from 'lucide-react';
+import { Bot, User, MessageSquare, Search, Database, FileText } from 'lucide-react';
 import useChat from '../../hooks/useChat';
 
 interface ChatBotPanelProps {
@@ -8,7 +8,7 @@ interface ChatBotPanelProps {
 
 const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<'chat' | 'research'>('chat');
+  const [mode, setMode] = useState<'chat' | 'research' | 'rag'>('chat');
   const { messages, sendMessage, isLoading } = useChat();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -19,42 +19,63 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
     }
   };
 
+  const getModeDescription = () => {
+    switch (mode) {
+      case 'chat':
+        return '💬 快速對話模式 (GPT-5)';
+      case 'research':
+        return '🔍 深度研究模式 (Google + LangGraph)';
+      case 'rag':
+        return '🧠 知識庫查詢 (Agentic RAG)';
+    }
+  };
+
   return (
     <div className="w-80 border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">AI Assistant</h2>
 
         {/* Mode Toggle */}
-        <div className="flex gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => setMode('chat')}
-            className={`flex-1 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+            className={`px-2 py-2 rounded flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
               mode === 'chat'
                 ? 'bg-blue-500 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            Chat
+            <span>Chat</span>
           </button>
           <button
             onClick={() => setMode('research')}
-            className={`flex-1 px-3 py-2 rounded flex items-center justify-center gap-2 text-sm font-medium transition-colors ${
+            className={`px-2 py-2 rounded flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
               mode === 'research'
                 ? 'bg-purple-500 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
             }`}
           >
             <Search className="w-4 h-4" />
-            Research
+            <span>Research</span>
+          </button>
+          <button
+            onClick={() => setMode('rag')}
+            className={`px-2 py-2 rounded flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
+              mode === 'rag'
+                ? 'bg-green-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+            title="RAG Knowledge Base"
+          >
+            <Database className="w-4 h-4" />
+            <span>RAG</span>
           </button>
         </div>
 
         {/* Mode Description */}
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          {mode === 'chat'
-            ? '💬 快速對話模式 (GPT-5)'
-            : '🔍 深度研究模式 (Google + LangGraph)'}
+          {getModeDescription()}
         </p>
       </div>
 
@@ -95,7 +116,29 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
               ) : (
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               )}
-              {/* Show sources for research results */}
+
+              {/* Show RAG sources (file names) */}
+              {message.ragSources && message.ragSources.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <p className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-1">
+                    <FileText className="w-3 h-3" />
+                    知識庫來源：
+                  </p>
+                  <div className="space-y-1">
+                    {message.ragSources.map((source, idx) => (
+                      <div
+                        key={idx}
+                        className="text-xs text-green-400 flex items-center gap-1"
+                      >
+                        <span className="w-1 h-1 bg-green-400 rounded-full"></span>
+                        {source}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Show web sources for research results */}
               {message.sources && message.sources.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-700">
                   <p className="text-xs font-semibold text-gray-400 mb-2">📚 參考來源：</p>
@@ -141,7 +184,7 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask AI assistant..."
+            placeholder={mode === 'rag' ? 'Ask from knowledge base...' : 'Ask AI assistant...'}
             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
             disabled={isLoading}
           />

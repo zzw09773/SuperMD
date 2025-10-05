@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import MarkdownEditor from '../editor/MarkdownEditor';
 import ChatBotPanel from '../chat/ChatBotPanel';
 import ProjectSidebar from '../sidebar/ProjectSidebar';
-import { FileDown, FileText, FileCode, FileType, Download, LogOut, User } from 'lucide-react';
+import RAGDocumentPanel from '../rag/RAGDocumentPanel';
+import { FileDown, FileText, FileCode, FileType, Download, LogOut, User, Database } from 'lucide-react';
 
 interface MainLayoutProps {
   currentDocumentId: string | null;
@@ -13,6 +14,7 @@ interface MainLayoutProps {
 
 const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: MainLayoutProps) => {
   const [showChat, setShowChat] = useState(false);
+  const [showRAG, setShowRAG] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [markdown, setMarkdown] = useState('');
   const editorRef = useRef<{ getContent: () => string } | null>(null);
@@ -76,13 +78,6 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
         <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
-                onClick={handleNewDocument}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                New Document
-              </button>
-
               {/* Export Dropdown */}
               <div className="relative">
                 <button
@@ -118,12 +113,22 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
                 </span>
               </div>
 
+              {/* RAG Knowledge Base Button */}
+              <button
+                onClick={() => setShowRAG(!showRAG)}
+                className={`px-4 py-2 ${showRAG ? 'bg-purple-600' : 'bg-purple-500'} text-white rounded hover:bg-purple-600 flex items-center gap-2`}
+                title="RAG Knowledge Base"
+              >
+                <Database className="w-4 h-4" />
+                {showRAG ? 'Hide' : 'Show'} RAG
+              </button>
+
               {/* AI Assistant Button */}
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                className={`px-4 py-2 ${showChat ? 'bg-green-600' : 'bg-green-500'} text-white rounded hover:bg-green-600`}
               >
-                {showChat ? 'Hide' : 'Show'} AI Assistant (GPT-5)
+                {showChat ? 'Hide' : 'Show'} AI Assistant
               </button>
 
               {/* Logout Button */}
@@ -146,6 +151,7 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
             ref={editorRef}
             onContentChange={setMarkdown}
           />
+          {showRAG && <RAGDocumentPanel />}
           {showChat && <ChatBotPanel documentContent={markdown} />}
         </div>
       </main>

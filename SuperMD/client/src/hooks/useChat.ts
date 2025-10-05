@@ -8,7 +8,7 @@ const useChat = () => {
 
   const sendMessage = useCallback(async (
     content: string,
-    mode: 'chat' | 'research' = 'chat',
+    mode: 'chat' | 'research' | 'rag' = 'chat',
     documentContent?: string
   ) => {
     const userMessage: ChatMessage = {
@@ -21,7 +21,26 @@ const useChat = () => {
     setIsLoading(true);
 
     try {
-      if (mode === 'research') {
+      if (mode === 'rag') {
+        // Use RAG API
+        const token = localStorage.getItem('token');
+        const response = await axios.post(
+          'http://localhost:3000/api/rag/query',
+          { query: content },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        const assistantMessage: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: response.data.answer,
+          timestamp: new Date(),
+          ragSources: response.data.sources || [],
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
+        setIsLoading(false);
+      } else if (mode === 'research') {
         // Use Research API with SSE
         const eventSource = new EventSource(
           `http://localhost:3000/api/research/query?query=${encodeURIComponent(content)}${

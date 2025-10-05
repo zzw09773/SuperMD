@@ -8,6 +8,7 @@ import SaveStatus from '../common/SaveStatus';
 import CollaborationStatus from '../collaboration/CollaborationStatus';
 import useAutoSave from '../../hooks/useAutoSave';
 import useCollaboration from '../../hooks/useCollaboration';
+import { documentAPI } from '../../services/api';
 
 interface MarkdownEditorProps {
   documentId: string | null;
@@ -22,6 +23,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
   ({ documentId, onContentChange }, ref) => {
     const [content, setContent] = useState('# Welcome to SuperMD\n\nStart typing...');
     const [showPreview, setShowPreview] = useState(true);
+    const [loading, setLoading] = useState(false);
     const { saveStatus, triggerSave } = useAutoSave(documentId, content);
     const { users, isConnected } = useCollaboration(documentId || 'demo');
 
@@ -29,12 +31,27 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
       getContent: () => content,
     }));
 
+    // Load document from API when documentId changes
     useEffect(() => {
-      if (documentId) {
-        // Load document content
-        // This would fetch from API in real implementation
-        console.log('Loading document:', documentId);
-      }
+      const loadDocument = async () => {
+        if (!documentId) {
+          setContent('# Welcome to SuperMD\n\nStart typing...');
+          return;
+        }
+
+        try {
+          setLoading(true);
+          const doc = await documentAPI.getById(documentId);
+          setContent(doc.content);
+        } catch (error) {
+          console.error('Failed to load document:', error);
+          setContent('# Error\n\nFailed to load document.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      loadDocument();
     }, [documentId]);
 
     useEffect(() => {

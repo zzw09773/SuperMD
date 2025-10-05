@@ -9,6 +9,11 @@ import foldersRouter from './routes/folders';
 import chatRouter from './routes/chat';
 import researchRouter from './routes/research';
 import exportRouter from './routes/export';
+import documentRouter from './routes/document';
+import projectRouter from './routes/project';
+import ragRouter from './routes/rag';
+import { initializePgVector } from './lib/pgvector';
+import { initializeRedis } from './lib/redis';
 
 // Load environment variables
 dotenv.config();
@@ -141,17 +146,32 @@ app.get('/api', (_req: Request, res: Response) => {
 // Register resource routes
 app.use('/api/auth', authRouter);
 app.use('/api/documents', documentsRouter);
+app.use('/api/document', documentRouter); // New Prisma-based document routes
+app.use('/api/projects', projectRouter); // New Prisma-based project routes
 app.use('/api/folders', foldersRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/research', researchRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/rag', ragRouter); // Agentic RAG routes
 
-// Start server
-httpServer.listen(PORT, () => {
+// Start server and initialize pgvector
+httpServer.listen(PORT, async () => {
   console.log(`🚀 SuperMD Server running on http://localhost:${PORT}`);
   console.log(`💚 Health check: http://localhost:${PORT}/health`);
   console.log(`📡 API endpoint: http://localhost:${PORT}/api`);
   console.log(`🔌 WebSocket server ready`);
+
+  // Initialize Redis cache
+  await initializeRedis();
+
+  // Initialize PostgreSQL pgvector
+  try {
+    await initializePgVector();
+    console.log(`🧠 Agentic RAG system ready`);
+  } catch (error) {
+    console.error(`⚠️  PgVector initialization failed. RAG features may not work.`);
+    console.error(`   Make sure PostgreSQL is running with pgvector extension installed.`);
+  }
 });
 
 // Graceful shutdown
