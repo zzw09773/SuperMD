@@ -149,6 +149,7 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
           <button
             onClick={() => { reset(); onClose(); }}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            aria-label="關閉對話框"
           >
             <X className="w-5 h-5" />
           </button>
@@ -183,6 +184,7 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
                 className="hidden"
                 accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp,.csv,.xls,.xlsx,.js,.ts,.jsx,.tsx,.py,.java,.cpp,.c,.cs,.go,.rs,.rb,.php,.swift,.kt,.sql,.html,.css,.json,.xml,.yaml,.yml"
                 onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                aria-label="選擇文件"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
                 支援格式: 文件 (PDF, DOCX, TXT, MD)、圖片 (PNG, JPG等)、表格 (CSV, XLSX)、程式碼 (最大 20MB)
