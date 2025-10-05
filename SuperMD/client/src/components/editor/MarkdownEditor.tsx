@@ -17,6 +17,7 @@ interface MarkdownEditorProps {
 
 export interface MarkdownEditorRef {
   getContent: () => string;
+  insertContent: (text: string) => void;
 }
 
 const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
@@ -29,6 +30,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
 
     useImperativeHandle(ref, () => ({
       getContent: () => content,
+      insertContent: (text: string) => {
+        setContent((prev) => prev + text);
+        triggerSave();
+      },
     }));
 
     // Load document from API when documentId changes
@@ -69,6 +74,48 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
       setContent(content + '\n' + text);
     };
 
+    // Handle paste event for images
+    const handlePaste = async (event: React.ClipboardEvent) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          event.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          try {
+            // Upload image to server
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('documentId', documentId || 'temp');
+
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:3000/api/upload-image', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              body: formData,
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const { url } = await response.json();
+
+            // Insert image markdown
+            const imageMarkdown = `\n![image](${url})\n`;
+            setContent((prev) => prev + imageMarkdown);
+            triggerSave();
+          } catch (error) {
+            console.error('Image upload error:', error);
+            alert('Failed to upload image');
+          }
+        }
+      }
+    };
+
     return (
       <div className="flex-1 flex flex-col">
         <EditorToolbar
@@ -79,7 +126,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
 
         <div className="flex-1 flex overflow-hidden">
           {/* Editor Pane */}
-          <div className={showPreview ? 'w-1/2 border-r border-gray-200' : 'w-full'}>
+          <div
+            className={showPreview ? 'w-1/2 border-r border-gray-200' : 'w-full'}
+            onPaste={handlePaste}
+          >
             <CodeMirror
               value={content}
               height="100%"

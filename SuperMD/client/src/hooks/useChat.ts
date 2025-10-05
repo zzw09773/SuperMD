@@ -1,10 +1,63 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import type { ChatMessage } from '../types';
 
-const useChat = () => {
+const useChat = (documentId?: string) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Load chat history when document changes
+  useEffect(() => {
+    if (!documentId) {
+      setMessages([]);
+      return;
+    }
+
+    const loadChatHistory = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.get(
+          `http://localhost:3000/api/chat-history/${documentId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setMessages(response.data.messages);
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+        setMessages([]);
+      }
+    };
+
+    loadChatHistory();
+  }, [documentId]);
+
+  // Save message to database
+  const saveChatMessage = useCallback(async (
+    message: ChatMessage,
+    mode: 'chat' | 'research' | 'rag'
+  ) => {
+    if (!documentId) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `http://localhost:3000/api/chat-history/${documentId}`,
+        {
+          role: message.role,
+          content: message.content,
+          mode,
+          sources: message.sources,
+          ragSources: message.ragSources,
+          metadata: message.metadata || message.toolCalls ? {
+            toolCalls: message.toolCalls,
+            ...message.metadata,
+          } : undefined,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (error) {
+      console.error('Failed to save chat message:', error);
+    }
+  }, [documentId]);
 
   const sendMessage = useCallback(async (
     content: string,
@@ -19,6 +72,9 @@ const useChat = () => {
     };
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+
+    // Save user message
+    await saveChatMessage(userMessage, mode);
 
     try {
       if (mode === 'rag') {
@@ -39,6 +95,7 @@ const useChat = () => {
         };
 
         setMessages(prev => [...prev, assistantMessage]);
+        await saveChatMessage(assistantMessage, mode);
         setIsLoading(false);
       } else if (mode === 'research') {
         // Use Research API with SSE
@@ -81,6 +138,7 @@ const useChat = () => {
               sources,
             };
             setMessages((prev) => [...prev, assistantMessage]);
+            saveChatMessage(assistantMessage, mode); // Fire and forget
             setIsLoading(false);
             eventSource.close();
           }
@@ -118,6 +176,7 @@ const useChat = () => {
         };
 
         setMessages(prev => [...prev, assistantMessage]);
+        await saveChatMessage(assistantMessage, mode);
         setIsLoading(false);
       }
     } catch (error) {
@@ -133,9 +192,24 @@ const useChat = () => {
       ]);
       setIsLoading(false);
     }
-  }, [messages]);
+  }, [messages, saveChatMessage]);
 
-  return { messages, sendMessage, isLoading };
+  const clearHistory = useCallback(async () => {
+    if (!documentId) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(
+        `http://localhost:3000/api/chat-history/${documentId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setMessages([]);
+    } catch (error) {
+      console.error('Failed to clear chat history:', error);
+    }
+  }, [documentId]);
+
+  return { messages, sendMessage, isLoading, clearHistory };
 };
 
 export default useChat;

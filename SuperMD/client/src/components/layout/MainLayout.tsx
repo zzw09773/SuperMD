@@ -152,7 +152,19 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
             onContentChange={setMarkdown}
           />
           {showRAG && <RAGDocumentPanel />}
-          {showChat && <ChatBotPanel documentContent={markdown} />}
+          {showChat && (
+            <ChatBotPanel
+              documentContent={markdown}
+              documentId={currentDocumentId || undefined}
+              onInsertContent={(content) => {
+                // Insert content at cursor position in editor
+                const editor = editorRef.current;
+                if (editor && 'insertContent' in editor && typeof editor.insertContent === 'function') {
+                  (editor as any).insertContent('\n\n' + content + '\n\n');
+                }
+              }}
+            />
+          )}
         </div>
       </main>
     </div>

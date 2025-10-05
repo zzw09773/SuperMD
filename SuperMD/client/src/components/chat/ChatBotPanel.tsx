@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { Bot, User, MessageSquare, Search, Database, FileText } from 'lucide-react';
+import { Bot, User, MessageSquare, Search, Database, FileText, Copy } from 'lucide-react';
 import useChat from '../../hooks/useChat';
 
 interface ChatBotPanelProps {
   documentContent?: string;
+  documentId?: string;
+  onInsertContent?: (content: string) => void;
 }
 
-const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
+const ChatBotPanel = ({ documentContent, documentId, onInsertContent }: ChatBotPanelProps) => {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'chat' | 'research' | 'rag'>('chat');
-  const { messages, sendMessage, isLoading } = useChat();
+  const { messages, sendMessage, isLoading, clearHistory } = useChat(documentId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,15 +96,16 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
                 <Bot className="w-5 h-5 text-blue-400" />
               </div>
             )}
-            <div
-              className={`rounded-lg px-4 py-2 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white max-w-[80%]'
-                  : message.role === 'system'
-                  ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 shadow-lg shadow-purple-500/20 animate-pulse'
-                  : 'bg-[#2d2d2d] text-gray-200 max-w-[80%]'
-              }`}
-            >
+            <div className="flex-1 flex flex-col gap-2">
+              <div
+                className={`rounded-lg px-4 py-2 ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white max-w-[80%]'
+                    : message.role === 'system'
+                    ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 shadow-lg shadow-purple-500/20 animate-pulse'
+                    : 'bg-[#2d2d2d] text-gray-200 max-w-[80%]'
+                }`}
+              >
               {/* Show reasoning with marquee/typing effect */}
               {message.metadata?.type === 'reasoning' ? (
                 <div className="flex items-center gap-2">
@@ -162,9 +165,22 @@ const ChatBotPanel = ({ documentContent }: ChatBotPanelProps) => {
                   </div>
                 </div>
               )}
-              <p className="text-xs mt-1 opacity-50">
-                {message.timestamp.toLocaleTimeString()}
-              </p>
+                <p className="text-xs mt-1 opacity-50">
+                  {message.timestamp.toLocaleTimeString()}
+                </p>
+              </div>
+
+              {/* Insert to Editor button - only for assistant messages */}
+              {message.role === 'assistant' && onInsertContent && (
+                <button
+                  onClick={() => onInsertContent(message.content)}
+                  className="self-start flex items-center gap-1 px-2 py-1 text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded transition-colors"
+                  title="插入到筆記本"
+                >
+                  <Copy className="w-3 h-3" />
+                  插入筆記本
+                </button>
+              )}
             </div>
             {message.role === 'user' && (
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-500/20 flex items-center justify-center">

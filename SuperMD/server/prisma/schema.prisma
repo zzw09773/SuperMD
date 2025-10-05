@@ -69,6 +69,7 @@ model Document {
   user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   permissions  DocumentPermission[] // Sharing permissions
   versions     Version[]
+  chatHistory  ChatMessage[]        // AI chat history
   isPublic     Boolean              @default(false) // Public access
   createdAt    DateTime             @default(now())
   lastEditedAt DateTime             @default(now())
@@ -102,6 +103,21 @@ model Version {
   content    String
   version    Int
   createdBy  String   @default("system")
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+  @@index([createdAt])
+}
+
+model ChatMessage {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  role       String   // "user" or "assistant" or "system"
+  content    String   // Message content
+  mode       String   @default("chat") // "chat", "research", "rag"
+  sources    String?  // JSON string for sources/ragSources
+  metadata   String?  // JSON string for additional data (toolCalls, steps, etc.)
   createdAt  DateTime @default(now())
 
   @@index([documentId])

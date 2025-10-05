@@ -12,6 +12,8 @@ import exportRouter from './routes/export';
 import documentRouter from './routes/document';
 import projectRouter from './routes/project';
 import ragRouter from './routes/rag';
+import chatHistoryRouter from './routes/chatHistory';
+import uploadRouter from './routes/upload';
 import { initializePgVector } from './lib/pgvector';
 import { initializeRedis } from './lib/redis';
 
@@ -29,6 +31,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
 
 // Socket.io setup for real-time collaboration
 const io = new Server(httpServer, {
@@ -153,6 +158,8 @@ app.use('/api/chat', chatRouter);
 app.use('/api/research', researchRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/rag', ragRouter); // Agentic RAG routes
+app.use('/api/chat-history', chatHistoryRouter); // Chat history routes
+app.use('/api', uploadRouter); // Upload routes (image upload)
 
 // Start server and initialize pgvector
 httpServer.listen(PORT, async () => {

@@ -32,6 +32,13 @@ const PreviewPane = ({ content }: PreviewPaneProps) => {
               </code>
             );
           },
+          img({ node, src, alt, ...props }) {
+            // Convert local paths to full URLs
+            const imageSrc = src?.startsWith('/uploads')
+              ? `http://localhost:3000${src}`
+              : src;
+            return <img src={imageSrc} alt={alt} {...props} />;
+          },
         }}
       >
         {content}

@@ -2,6 +2,51 @@ import { Response } from 'express';
 import { marked } from 'marked';
 import { jsPDF } from 'jspdf';
 import asBlob from 'html-docx-js/dist/html-docx';
+import fs from 'fs/promises';
+import path from 'path';
+
+/**
+ * Convert local image paths to base64 embedded images
+ */
+async function embedImages(content: string): Promise<string> {
+  const imageRegex = /!\[([^\]]*)\]\((\/uploads\/[^\)]+)\)/g;
+  let modifiedContent = content;
+  const matches = Array.from(content.matchAll(imageRegex));
+
+  for (const match of matches) {
+    const [fullMatch, altText, imagePath] = match;
+    try {
+      // Build path: /uploads/images/xxx.png -> uploads/images/xxx.png
+      const relativePath = imagePath.startsWith('/') ? imagePath.substring(1) : imagePath;
+      const fullPath = path.join(process.cwd(), relativePath);
+
+      console.log(`[Export] Reading image from: ${fullPath}`);
+      const imageBuffer = await fs.readFile(fullPath);
+      const base64Image = imageBuffer.toString('base64');
+
+      // Detect MIME type from extension
+      const ext = path.extname(imagePath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+
+      // Replace with base64 embedded image
+      const base64Markdown = `![${altText}](data:${mimeType};base64,${base64Image})`;
+      modifiedContent = modifiedContent.replace(fullMatch, base64Markdown);
+      console.log(`[Export] Successfully embedded image: ${imagePath}`);
+    } catch (error) {
+      console.error(`[Export] Failed to embed image ${imagePath}:`, error);
+      // Keep original markdown if embedding fails
+    }
+  }
+
+  return modifiedContent;
+}
 
 /**
  * Export document to various formats
@@ -13,21 +58,24 @@ export const exportDocument = async (
   res: Response
 ): Promise<void> => {
   try {
+    // Embed images for export
+    const contentWithEmbeddedImages = await embedImages(content);
+
     switch (format) {
       case 'md':
-        exportMarkdown(content, title, res);
+        exportMarkdown(contentWithEmbeddedImages, title, res);
         break;
       case 'txt':
-        exportText(content, title, res);
+        exportText(contentWithEmbeddedImages, title, res);
         break;
       case 'html':
-        await exportHTML(content, title, res);
+        await exportHTML(contentWithEmbeddedImages, title, res);
         break;
       case 'pdf':
-        await exportPDF(content, title, res);
+        await exportPDF(contentWithEmbeddedImages, title, res);
         break;
       case 'docx':
-        await exportDOCX(content, title, res);
+        await exportDOCX(contentWithEmbeddedImages, title, res);
         break;
       default:
         res.status(400).json({ error: `Unsupported format: ${format}` });
@@ -150,26 +198,32 @@ async function exportPDF(content: string, title: string, res: Response): Promise
  * Export as DOCX (.docx)
  */
 async function exportDOCX(content: string, title: string, res: Response): Promise<void> {
-  const htmlContent = await marked(content);
+  try {
+    const htmlContent = await marked(content);
 
-  const fullHTML = `
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>${escapeHtml(title)}</title>
-      </head>
-      <body>
-        <h1>${escapeHtml(title)}</h1>
-        ${htmlContent}
-      </body>
-    </html>
-  `;
+    const fullHTML = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${escapeHtml(title)}</title>
+        </head>
+        <body>
+          <h1>${escapeHtml(title)}</h1>
+          ${htmlContent}
+        </body>
+      </html>
+    `;
 
-  const docx = asBlob(fullHTML);
+    // asBlob returns an ArrayBuffer, we need to convert it properly
+    const docxBlob = asBlob(fullHTML);
 
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(title)}.docx"`);
-  res.send(Buffer.from(docx));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(title)}.docx"`);
+    res.send(Buffer.from(docxBlob));
+  } catch (error) {
+    console.error('[Export] DOCX generation error:', error);
+    throw error;
+  }
 }
 
 /**
