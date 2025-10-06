@@ -3,7 +3,9 @@ import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion } from '@codemirror/autocomplete';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import PreviewPane from './PreviewPane';
+import TableOfContents from './TableOfContents';
 import EditorToolbar from './EditorToolbar';
 import SaveStatus from '../common/SaveStatus';
 import CollaborationStatus from '../collaboration/CollaborationStatus';
@@ -26,6 +28,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
   ({ documentId, onContentChange }, ref) => {
     const [content, setContent] = useState('# Welcome to SuperMD\n\nStart typing...');
     const [showPreview, setShowPreview] = useState(true);
+    const [showToc, setShowToc] = useState(false);
+    const [previewMode, setPreviewMode] = useState<'split' | 'preview-only' | 'editor-only'>('split');
     const [loading, setLoading] = useState(false);
     const { saveStatus, triggerSave } = useAutoSave(documentId, content);
     const { users, isConnected } = useCollaboration(documentId || 'demo');
@@ -119,42 +123,68 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     };
 
     return (
-      <div className="flex-1 flex flex-col">
+      <div className="flex h-full min-h-0 flex-col">
         <EditorToolbar
           showPreview={showPreview}
+          showToc={showToc}
+          previewMode={previewMode}
           onTogglePreview={() => setShowPreview(!showPreview)}
+          onToggleToc={() => setShowToc(!showToc)}
+          onPreviewModeChange={setPreviewMode}
           onInsert={handleInsert}
         />
 
-        <div className="flex-1 flex overflow-hidden">
-          {/* Editor Pane */}
-          <div
-            className={showPreview ? 'w-1/2 border-r border-gray-200' : 'w-full'}
-            onPaste={handlePaste}
-          >
-            <CodeMirror
-              value={content}
-              height="100%"
-              theme={oneDark}
-              extensions={[
-                markdown(),
-                autocompletion({
-                  override: [markdownAutocomplete],
-                  activateOnTyping: true,
-                  maxRenderedOptions: 10,
-                }),
-              ]}
-              onChange={handleChange}
-              className="h-full"
-            />
-          </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <PanelGroup direction="horizontal" className="flex-1 min-h-0">
+            {/* TOC Panel */}
+            {showToc && (
+              <>
+                <Panel defaultSize={15} minSize={10} maxSize={30} className="min-w-0">
+                  <div className="h-full overflow-auto bg-white dark:bg-gray-800">
+                    <TableOfContents content={content} />
+                  </div>
+                </Panel>
+                <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
+              </>
+            )}
 
-          {/* Preview Pane */}
-          {showPreview && (
-            <div className="w-1/2 overflow-auto">
-              <PreviewPane content={content} />
-            </div>
-          )}
+            {/* Editor Pane */}
+            {previewMode !== 'preview-only' && (
+              <>
+                <Panel defaultSize={showPreview ? 50 : 100} minSize={20} className="min-w-0">
+                  <div className="h-full min-h-0" onPaste={handlePaste}>
+                    <CodeMirror
+                      value={content}
+                      height="100%"
+                      theme={oneDark}
+                      extensions={[
+                        markdown(),
+                        autocompletion({
+                          override: [markdownAutocomplete],
+                          activateOnTyping: true,
+                          maxRenderedOptions: 10,
+                        }),
+                      ]}
+                      onChange={handleChange}
+                      className="h-full"
+                    />
+                  </div>
+                </Panel>
+                {showPreview && previewMode === 'split' && (
+                  <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
+                )}
+              </>
+            )}
+
+            {/* Preview Pane */}
+            {showPreview && previewMode !== 'editor-only' && (
+              <Panel defaultSize={previewMode === 'preview-only' ? 100 : 50} minSize={20} className="min-w-0">
+                <div className="h-full min-h-0 overflow-auto">
+                  <PreviewPane content={content} />
+                </div>
+              </Panel>
+            )}
+          </PanelGroup>
         </div>
 
         <div className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">

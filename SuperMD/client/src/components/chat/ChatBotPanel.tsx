@@ -11,7 +11,7 @@ interface ChatBotPanelProps {
 const ChatBotPanel = ({ documentContent, documentId, onInsertContent }: ChatBotPanelProps) => {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'chat' | 'research' | 'rag'>('chat');
-  const { messages, sendMessage, isLoading, clearHistory } = useChat(documentId);
+  const { messages, sendMessage, isLoading } = useChat(documentId);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +33,7 @@ const ChatBotPanel = ({ documentContent, documentId, onInsertContent }: ChatBotP
   };
 
   return (
-    <div className="w-80 border-l border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800">
+    <div className="flex h-full min-h-0 flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">AI Assistant</h2>
 

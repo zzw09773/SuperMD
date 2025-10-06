@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import MarkdownEditor from '../editor/MarkdownEditor';
+import { useState, useRef } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import MarkdownEditor, { MarkdownEditorRef } from '../editor/MarkdownEditor';
 import ChatBotPanel from '../chat/ChatBotPanel';
 import ProjectSidebar from '../sidebar/ProjectSidebar';
 import RAGDocumentPanel from '../rag/RAGDocumentPanel';
-import { FileDown, FileText, FileCode, FileType, Download, LogOut, User, Database } from 'lucide-react';
+import { FileDown, FileText, FileCode, FileType, Download, LogOut, User, Database, Settings } from 'lucide-react';
+import CredentialsModal from '../settings/CredentialsModal';
 
 interface MainLayoutProps {
   currentDocumentId: string | null;
@@ -17,13 +19,8 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
   const [showRAG, setShowRAG] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [markdown, setMarkdown] = useState('');
-  const editorRef = useRef<{ getContent: () => string } | null>(null);
-
-  const handleNewDocument = () => {
-    // Create a new document ID
-    const newDocId = `doc-${Date.now()}`;
-    onDocumentSelect(newDocId);
-  };
+  const [showSettings, setShowSettings] = useState(false);
+  const editorRef = useRef<MarkdownEditorRef | null>(null);
 
   const handleExport = async (format: 'md' | 'html' | 'pdf' | 'docx' | 'txt') => {
     const content = editorRef.current?.getContent() || '';
@@ -105,6 +102,15 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {/* Settings Button */}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                title="個人化設定"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+
               {/* User Info */}
               <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded">
                 <User className="w-4 h-4 text-gray-600 dark:text-gray-400" />
@@ -146,27 +152,50 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
 
         {/* Editor Area */}
         <div className="flex-1 flex overflow-hidden">
-          <MarkdownEditor
-            documentId={currentDocumentId}
-            ref={editorRef}
-            onContentChange={setMarkdown}
-          />
-          {showRAG && <RAGDocumentPanel />}
-          {showChat && (
-            <ChatBotPanel
-              documentContent={markdown}
-              documentId={currentDocumentId || undefined}
-              onInsertContent={(content) => {
-                // Insert content at cursor position in editor
-                const editor = editorRef.current;
-                if (editor && 'insertContent' in editor && typeof editor.insertContent === 'function') {
-                  (editor as any).insertContent('\n\n' + content + '\n\n');
-                }
-              }}
-            />
-          )}
+          <PanelGroup direction="horizontal">
+            {/* Main Editor Panel */}
+            <Panel defaultSize={showRAG || showChat ? 70 : 100} minSize={30}>
+              <MarkdownEditor
+                documentId={currentDocumentId}
+                ref={editorRef}
+                onContentChange={setMarkdown}
+              />
+            </Panel>
+
+            {/* RAG Panel */}
+            {showRAG && (
+              <>
+                <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-purple-500 transition-colors" />
+                <Panel defaultSize={30} minSize={20} maxSize={50}>
+                  <RAGDocumentPanel />
+                </Panel>
+              </>
+            )}
+
+            {/* AI Chat Panel */}
+            {showChat && (
+              <>
+                <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-green-500 transition-colors" />
+                <Panel defaultSize={30} minSize={20} maxSize={50}>
+                  <ChatBotPanel
+                    documentContent={markdown}
+                    documentId={currentDocumentId || undefined}
+                    onInsertContent={(content) => {
+                      // Insert content at cursor position in editor
+                      editorRef.current?.insertContent(`\n\n${content}\n\n`);
+                    }}
+                  />
+                </Panel>
+              </>
+            )}
+          </PanelGroup>
         </div>
       </main>
+
+      <CredentialsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </div>
   );
 };

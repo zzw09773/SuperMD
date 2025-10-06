@@ -58,10 +58,18 @@ const markdownCompletions = [
     info: 'Mermaid 序列圖',
     apply: '```mermaid\nsequenceDiagram\n    participant A\n    participant B\n    A->>B: Message\n    B-->>A: Response\n```'
   },
+
+  // Math formulas
+  { label: '$inline math$', type: 'keyword', info: '行內數學公式', apply: '$${1:E=mc^2}$' },
+  { label: '$$block math$$', type: 'keyword', info: '區塊數學公式', apply: '$$\n${1:E=mc^2}\n$$' },
+
+  // Footnotes
+  { label: '[^footnote]', type: 'keyword', info: '腳註引用', apply: '[^${1:1}]' },
+  { label: '[^footnote]: text', type: 'keyword', info: '腳註定義', apply: '[^${1:1}]: ${2:Footnote content}' },
 ];
 
 export function markdownAutocomplete(context: CompletionContext): CompletionResult | null {
-  const word = context.matchBefore(/[\w#*`\-\[\]>~]/);
+  const word = context.matchBefore(/[\w#*`\-\[\]>~$]/);
 
   if (!word) return null;
 
@@ -73,6 +81,6 @@ export function markdownAutocomplete(context: CompletionContext): CompletionResu
   return {
     from: word.from,
     options: markdownCompletions,
-    validFor: /^[\w#*`\-\[\]>~]*$/,
+    validFor: /^[\w#*`\-\[\]>~$]*$/,
   };
 }

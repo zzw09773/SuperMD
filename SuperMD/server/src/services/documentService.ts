@@ -1,4 +1,10 @@
 import prisma from '../lib/prisma';
+import {
+  assertCanEditDocument,
+  assertCanReadDocument,
+  assertDocumentOwnership,
+  listAccessibleDocuments,
+} from '../lib/permissions';
 
 interface CreateDocumentData {
   title: string;
@@ -28,39 +34,63 @@ export const createDocument = async (data: CreateDocumentData) => {
     },
     include: {
       project: true,
+      permissions: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
 
-  return document;
+  return {
+    ...document,
+    accessLevel: 'owner' as const,
+  };
 };
 
 /**
  * Get all documents for a user
  */
 export const getUserDocuments = async (userId: string) => {
-  const documents = await prisma.document.findMany({
-    where: {
-      userId,
-    },
-    include: {
-      project: true,
-    },
-    orderBy: {
-      updatedAt: 'desc',
-    },
-  });
-
-  return documents;
+  return listAccessibleDocuments(userId);
 };
 
 /**
  * Get a single document by ID
  */
 export const getDocumentById = async (documentId: string, userId: string) => {
-  const document = await prisma.document.findFirst({
+  const { document, accessLevel } = await assertCanReadDocument(documentId, userId);
+
+  return {
+    ...document,
+    accessLevel,
+  };
+};
+
+/**
+ * Update a document
+ */
+export const updateDocument = async (
+  documentId: string,
+  userId: string,
+  data: UpdateDocumentData
+) => {
+  const { accessLevel } = await assertCanEditDocument(documentId, userId);
+
+  const updatedDocument = await prisma.document.update({
     where: {
       id: documentId,
-      userId,
+    },
+    data: {
+      ...(data.title !== undefined && { title: data.title }),
+      ...(data.content !== undefined && { content: data.content }),
+      ...(data.projectId !== undefined && { projectId: data.projectId }),
     },
     include: {
       project: true,
@@ -78,65 +108,17 @@ export const getDocumentById = async (documentId: string, userId: string) => {
     },
   });
 
-  if (!document) {
-    throw new Error('Document not found or access denied');
-  }
-
-  return document;
-};
-
-/**
- * Update a document
- */
-export const updateDocument = async (
-  documentId: string,
-  userId: string,
-  data: UpdateDocumentData
-) => {
-  // Verify ownership
-  const existingDoc = await prisma.document.findFirst({
-    where: {
-      id: documentId,
-      userId,
-    },
-  });
-
-  if (!existingDoc) {
-    throw new Error('Document not found or access denied');
-  }
-
-  const updatedDocument = await prisma.document.update({
-    where: {
-      id: documentId,
-    },
-    data: {
-      ...(data.title !== undefined && { title: data.title }),
-      ...(data.content !== undefined && { content: data.content }),
-      ...(data.projectId !== undefined && { projectId: data.projectId }),
-    },
-    include: {
-      project: true,
-    },
-  });
-
-  return updatedDocument;
+  return {
+    ...updatedDocument,
+    accessLevel,
+  };
 };
 
 /**
  * Delete a document
  */
 export const deleteDocument = async (documentId: string, userId: string) => {
-  // Verify ownership
-  const existingDoc = await prisma.document.findFirst({
-    where: {
-      id: documentId,
-      userId,
-    },
-  });
-
-  if (!existingDoc) {
-    throw new Error('Document not found or access denied');
-  }
+  await assertDocumentOwnership(documentId, userId);
 
   await prisma.document.delete({
     where: {
@@ -155,5 +137,79 @@ export const moveDocumentToProject = async (
   userId: string,
   projectId: string | null
 ) => {
-  return await updateDocument(documentId, userId, { projectId });
+  return updateDocument(documentId, userId, { projectId });
+};
+
+export const shareDocumentWithUser = async (
+  documentId: string,
+  ownerId: string,
+  {
+    email,
+    permission,
+  }: {
+    email: string;
+    permission: 'read' | 'write';
+  }
+) => {
+  const { document } = await assertDocumentOwnership(documentId, ownerId);
+
+  const targetUser = await prisma.user.findUnique({ where: { email } });
+  if (!targetUser) {
+    throw new Error('Target user not found');
+  }
+
+  if (targetUser.id === ownerId) {
+    throw new Error('Owner already has full access');
+  }
+
+  const result = await prisma.documentPermission.upsert({
+    where: {
+      documentId_userId: {
+        documentId,
+        userId: targetUser.id,
+      },
+    },
+    update: {
+      permission,
+    },
+    create: {
+      documentId,
+      userId: targetUser.id,
+      permission,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  return {
+    document,
+    sharedWith: result,
+  };
+};
+
+export const revokeDocumentShare = async (documentId: string, ownerId: string, permissionId: string) => {
+  await assertDocumentOwnership(documentId, ownerId);
+
+  await prisma.documentPermission.delete({
+    where: {
+      id: permissionId,
+    },
+  });
+};
+
+export const listDocumentShares = async (documentId: string, userId: string) => {
+  const { document, accessLevel } = await assertCanReadDocument(documentId, userId);
+
+  return {
+    document,
+    accessLevel,
+    sharedWith: document.permissions,
+  };
 };

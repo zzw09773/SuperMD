@@ -1,5 +1,9 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import remarkFootnotes from 'remark-footnotes';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import MermaidRenderer from './MermaidRenderer';
 
 interface PreviewPaneProps {
@@ -7,49 +11,64 @@ interface PreviewPaneProps {
 }
 
 const PreviewPane = ({ content }: PreviewPaneProps) => {
+  // Helper function to generate heading IDs
+  const generateHeadingId = (text: string, index: number) => {
+    const cleanText = String(text).toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
+    return `heading-${index}-${cleanText}`;
+  };
+
+  let headingIndex = 0;
+
   return (
     <div className="p-6 prose prose-lg prose-slate max-w-none dark:prose-invert prose-headings:font-bold prose-h1:text-4xl prose-h2:text-3xl prose-h3:text-2xl prose-h4:text-xl prose-h5:text-lg prose-h6:text-base prose-h1:border-b prose-h1:pb-2 prose-h2:border-b prose-h2:pb-1 prose-h1:mt-6 prose-h2:mt-5 prose-h3:mt-4 prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-1">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath, [remarkFootnotes, { inlineNotes: true }]]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           h1({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h1 className="text-4xl font-bold mt-6 mb-4 pb-2 border-b border-gray-300 dark:border-gray-700" {...props}>
+              <h1 id={id} className="text-4xl font-bold mt-6 mb-4 pb-2 border-b border-gray-300 dark:border-gray-700" {...props}>
                 {children}
               </h1>
             );
           },
           h2({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h2 className="text-3xl font-bold mt-5 mb-3 pb-1 border-b border-gray-200 dark:border-gray-700" {...props}>
+              <h2 id={id} className="text-3xl font-bold mt-5 mb-3 pb-1 border-b border-gray-200 dark:border-gray-700" {...props}>
                 {children}
               </h2>
             );
           },
           h3({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h3 className="text-2xl font-bold mt-4 mb-2" {...props}>
+              <h3 id={id} className="text-2xl font-bold mt-4 mb-2" {...props}>
                 {children}
               </h3>
             );
           },
           h4({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h4 className="text-xl font-bold mt-3 mb-2" {...props}>
+              <h4 id={id} className="text-xl font-bold mt-3 mb-2" {...props}>
                 {children}
               </h4>
             );
           },
           h5({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h5 className="text-lg font-bold mt-2 mb-1" {...props}>
+              <h5 id={id} className="text-lg font-bold mt-2 mb-1" {...props}>
                 {children}
               </h5>
             );
           },
           h6({ node, children, ...props }) {
+            const id = generateHeadingId(children, headingIndex++);
             return (
-              <h6 className="text-base font-bold mt-2 mb-1" {...props}>
+              <h6 id={id} className="text-base font-bold mt-2 mb-1" {...props}>
                 {children}
               </h6>
             );

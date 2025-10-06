@@ -33,9 +33,7 @@ const SaveStatus = ({ status, lastSaved }: SaveStatusProps) => {
   };
 
   return (
-    <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-      <span className={`text-sm ${getStatusColor()}`}>{getStatusText()}</span>
-    </div>
+    <span className={`text-sm ${getStatusColor()}`}>{getStatusText()}</span>
   );
 };
 

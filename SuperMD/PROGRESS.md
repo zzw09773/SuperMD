@@ -321,10 +321,13 @@ curl http://localhost:3000/api/research/status
 ## 📋 下一步 Roadmap
 
 ### Phase 4: 資料持久化 (未來)
-- [ ] 替換 memoryStore 為 Prisma + SQLite
-- [ ] 資料庫遷移腳本
-- [ ] 用戶認證系統
-- [ ] 文件權限管理
+- [ ] 完成 Phase 4 Spike（詳見 `docs/phase-4-spike.md`）
+- [ ] Prisma 資料源改用 PostgreSQL 並提供 SQLite fallback
+- [ ] 一次性資料匯入腳本 + 還原流程
+- [ ] 權限 API（DocumentPermission guard）與前端唯讀/分享介面
+- [ ] 後端/前端測試骨架（Vitest + Supertest / RTL）
+- [ ] RAG 快取與向量 fallback/監控
+- [ ] API Key 設定面板原型
 
 ### Phase 5: 進階功能 (未來)
 - [ ] 版本歷史 (Git-like)
@@ -343,6 +346,50 @@ curl http://localhost:3000/api/research/status
 - [ ] CI/CD Pipeline
 - [ ] 錯誤追蹤 (Sentry)
 - [ ] 效能監控 (Analytics)
+
+---
+
+## 🛠 Phase 4 規劃提案 (2025-10-06)
+
+### 4.1 資料持久化升級（SQLite → PostgreSQL）
+- **現況評估**：Prisma 目前使用 SQLite（`schema.prisma`），而 RAG 流程已採用 PostgreSQL + pgvector。Phase 4 目標是統一主資料庫，避免雙資料源造成一致性問題。
+- **建議步驟**：
+  1. 建立 PostgreSQL 執行個體並設定 `DATABASE_URL=postgresql://`（可沿用 pgvector 叢集或建立獨立資料庫）。
+  2. 更新 `schema.prisma` 的 datasource provider，執行 `npx prisma migrate diff` 驗證差異，並建立首批遷移腳本。
+  3. 撰寫一次性遷移腳本（Node.js + Prisma）將 SQLite `dev.db` 匯出後寫入 PostgreSQL；同步處理文件、專案、目錄、聊天紀錄等關聯。
+  4. 更新 `.env`、`docker-compose`（如需要）並在 `.github/copilot-instructions.md` 補充新環境變數與啟動流程。
+  5. PR 流程提供資料備援方案：本地 fallback 至 SQLite（`DATABASE_URL=file:./dev.db`）或提供 `docker-compose.db.yml` 方便一鍵啟動。
+
+### 4.2 權限與認證整合
+- **現況評估**：`DocumentPermission` 模型已存在，但 API 仍以使用者為中心，尚未真正落實共享與權限檢查。
+- **建議實作**：
+  - 於 `authMiddleware` 注入的 `req.user`，在 `routes/document*`、`routes/project*`、`routes/chatHistory.ts` 加入 `DocumentPermission` 檢核（read/write）。
+  - 建立共用 helper（`canReadDocument`, `canEditDocument`）以及 Prisma include 範本，避免重複查詢邏輯。
+  - 客戶端在 `ProjectSidebar`、`MarkdownEditor` 等組件加入唯讀模式（禁用寫入、顯示鎖頭）。
+  - 新增分享 API（依 email 邀請 → 建立 `DocumentPermission`），並在 UI 顯示權限徽章或 Tooltip。
+
+### 4.3 自動化測試策略
+- **Backend**：採用 Vitest 或 Jest + Supertest 覆蓋 `auth`, `documents`, `rag` 路由；使用 Prisma Test Environment（每測試啟動交易或 SQLite in-memory）並以 `ioredis-mock` 模擬快取。
+- **Frontend**：利用 Vitest + React Testing Library 測試 `ChatBotPanel` 串流渲染、面板折疊，以及 `useChat` hook 的 SSE 邏輯（mock EventSource）。
+- **E2E**：導入 Playwright，自動化「登入 → 開啟文件 → 串流回答 → 匯出 DOCX」主流程。
+- **CI**：GitHub Actions 建議流程 `lint → test → build`；切換 PostgreSQL 後需在 workflow 啟動 `services: postgres`，並匯入 init script。
+
+### 4.4 SSE 流程重點
+- **端點**：
+  - `/api/research/query`（GET）：LangGraph ReAct agent；串流事件類型包含 `reasoning`、`tool_call`、`tool_result`、`chunk`，最後以 `done` payload（`fullResponse`、`toolCalls`、`sources`）結束。
+  - `/api/chat`（POST, `stream=true`）：OpenAI Chat Completion 串流，傳回 `{ chunk }` 字串並以 `[DONE]` 收尾。
+- **握手與錯誤處理**：兩端點皆設定 `Content-Type: text/event-stream`、`Cache-Control: no-cache`、`Connection: keep-alive`。當例外發生且 headers 已送出時，以 `data: {"error": "..."}` 傳回後立即 `res.end()`，避免前端掛起。
+- **前端整合提醒**：`useChat.ts` 需解析 `[DONE]` 事件、依事件 `type` 更新 UI；Research 模式在 `ChatBotPanel` 透過 `type === 'reasoning'` 控制跑馬燈，`sources` 用於結尾引用展示。
+
+### 4.5 RAG 向量儲存筆記
+- **資料表**：`rag_documents`（原始文件）與 `rag_embeddings`（1536 維向量、IVFFlat 索引），皆由 `initializePgVector()` 建立，並以 `document_id` 關聯。
+- **流程摘要**：
+  1. `smartIndexDocument` → `indexDocument`：Recursive splitter (1000/200) 切片，呼叫 `OpenAIEmbeddings.embedDocuments`，逐筆寫入向量表。
+  2. `searchSimilarDocuments`：先查 Redis 快取（key: `rag:search:<md5>`），若 miss 則計算 query embedding，使用 `<=>` cosine 距離排序。
+  3. Agentic RAG (`queryAgenticRAG`) 將結果包成 `knowledge_base_search` 工具輸出，LLM 負責組裝回答與引用。
+- **Phase 4 風險控管**：將 `CREATE EXTENSION vector` 納入 migration；為 Redis 異常時提供 graceful fallback（直接查資料庫 + log）；針對批次 upsert / re-index 撰寫背景工作（可放入 `batchProcessor.ts`）。
+
+> 📌 請在重大重構前同步更新本節與 `.github/copilot-instructions.md`，確保所有開發者掌握最新共識。
 
 ---
 

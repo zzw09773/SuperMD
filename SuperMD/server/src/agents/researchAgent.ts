@@ -3,6 +3,16 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { z } from 'zod';
 import { google } from 'googleapis';
+import {
+  wikipediaSearchTool,
+  arxivSearchTool,
+  stackOverflowSearchTool,
+  githubSearchTool,
+  writingAssistantTool,
+  translationTool,
+  summarizationTool,
+  codeExplanationTool,
+} from './tools';
 
 // Initialize LLM
 function getLLM() {
@@ -130,7 +140,25 @@ const documentSearchTool = new DynamicStructuredTool({
 // Create Research Agent
 export async function createResearchAgent(documentContent?: string) {
   const webSearchTool = createWebSearchTool();
-  const tools = [calculatorTool, webSearchTool, documentSearchTool];
+
+  // All available tools
+  const tools = [
+    calculatorTool,
+    webSearchTool,
+    documentSearchTool,
+    // Academic Research Assistant tools
+    wikipediaSearchTool,
+    arxivSearchTool,
+    // Developer Assistant tools
+    stackOverflowSearchTool,
+    githubSearchTool,
+    // AI Assistant tools
+    writingAssistantTool,
+    translationTool,
+    summarizationTool,
+    codeExplanationTool,
+  ];
+
   const llm = getLLM();
 
   const agent = createReactAgent({
@@ -191,13 +219,36 @@ export async function streamResearchResponse(
           if (onChunk) {
             onChunk({
               type: 'reasoning',
-              content: `🧠 AI正在思考並準備使用 ${lastMessage.tool_calls.length} 個工具...`
+              content: `🧠 **AI 推理過程：**\n正在分析問題並規劃使用 ${lastMessage.tool_calls.length} 個工具來回答您的問題...`
             });
           }
 
-          // Send tool call info
+          // Send tool call info with reasoning
           for (const toolCall of lastMessage.tool_calls) {
+            // Tool name translation map
+            const toolNameMap: Record<string, string> = {
+              'google_search': 'Google 搜尋',
+              'wikipedia_search': 'Wikipedia 查詢',
+              'arxiv_search': 'arXiv 論文搜尋',
+              'stackoverflow_search': 'Stack Overflow 搜尋',
+              'github_search': 'GitHub 代碼搜尋',
+              'calculator': '計算器',
+              'document_search': '文檔搜尋',
+              'writing_assistant': '寫作助手',
+              'translate': '翻譯工具',
+              'summarize': '摘要工具',
+              'explain_code': '程式碼解釋器',
+            };
+
+            const toolDisplayName = toolNameMap[toolCall.name] || toolCall.name;
+
             if (onChunk) {
+              // Send reasoning about why using this tool
+              onChunk({
+                type: 'reasoning',
+                content: `\n📋 **步驟：使用「${toolDisplayName}」**\n參數：${JSON.stringify(toolCall.args, null, 2)}`
+              });
+
               onChunk({
                 type: 'tool_call',
                 tool: toolCall.name,
@@ -215,6 +266,16 @@ export async function streamResearchResponse(
         // Extract final response
         const content = lastMessage?.content || '';
         if (content && typeof content === 'string' && !lastMessage?.tool_calls) {
+          // If this is the start of the final response, send a reasoning message
+          if (fullResponse === '' && content.length > 0 && toolCalls.length > 0) {
+            if (onChunk) {
+              onChunk({
+                type: 'reasoning',
+                content: `\n🎯 **正在整合資訊並生成回答...**\n已收集所有必要資訊，現在為您整理答案。`
+              });
+            }
+          }
+
           fullResponse += content;
           if (onChunk) {
             onChunk({ type: 'chunk', content });
@@ -234,8 +295,9 @@ export async function streamResearchResponse(
             toolCalls[toolCallIndex].result = toolResult;
           }
 
-          // Extract sources from Google search results
-          if (toolName === 'google_search' && toolResult) {
+          // Extract sources from search results (all tools that return URLs)
+          const toolsWithSources = ['google_search', 'wikipedia_search', 'arxiv_search', 'stackoverflow_search', 'github_search'];
+          if (toolsWithSources.includes(toolName) && toolResult) {
             const urlMatches = toolResult.match(/🔗 (https?:\/\/[^\s]+)/g);
             if (urlMatches) {
               urlMatches.forEach((match: string) => {
@@ -248,10 +310,33 @@ export async function streamResearchResponse(
           }
 
           if (onChunk) {
+            // Tool name translation
+            const toolNameMap: Record<string, string> = {
+              'google_search': 'Google 搜尋',
+              'wikipedia_search': 'Wikipedia 查詢',
+              'arxiv_search': 'arXiv 論文搜尋',
+              'stackoverflow_search': 'Stack Overflow 搜尋',
+              'github_search': 'GitHub 代碼搜尋',
+              'calculator': '計算器',
+              'document_search': '文檔搜尋',
+              'writing_assistant': '寫作助手',
+              'translate': '翻譯工具',
+              'summarize': '摘要工具',
+              'explain_code': '程式碼解釋器',
+            };
+
+            const toolDisplayName = toolNameMap[toolName] || toolName;
+
+            // Send reasoning about tool result
+            onChunk({
+              type: 'reasoning',
+              content: `\n✅ **「${toolDisplayName}」執行完成**\n獲得結果，正在整合資訊...`
+            });
+
             onChunk({
               type: 'tool_result',
               tool: toolName,
-              summary: toolResult.substring(0, 200) + '...'
+              summary: toolResult.substring(0, 200) + (toolResult.length > 200 ? '...' : '')
             });
           }
         }
