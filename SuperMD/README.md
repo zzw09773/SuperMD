@@ -6,10 +6,13 @@ A modern, collaborative Markdown editor with dual-mode AI assistance (GPT-5 Chat
 
 ### 🎯 Core Features
 - 📝 **Rich Markdown Editor** - Powered by CodeMirror 6 with syntax highlighting
-- 🤝 **Real-time Collaboration** - Multiple users can edit documents simultaneously with Y.js CRDT
-- 🎨 **Live Preview** - See your formatted markdown in real-time (split view)
+- ✨ **Markdown Autocomplete** - Smart suggestions with floating popup menu
+- 🎨 **Live Preview** - See your formatted markdown in real-time (CodiMD-style split view)
+- 📊 **Hierarchical Headings** - Clear visual distinction between H1-H6
+- 🤝 **Real-time Collaboration** - Multiple users can edit documents simultaneously with Socket.io
 - 💾 **Auto-save** - Never lose your work with automatic saving
 - 📤 **Multi-format Export** - Export to MD, HTML, PDF, DOCX, and TXT formats
+- 🖼️ **Image Upload** - Paste images directly into editor
 
 ### 🤖 Dual-Mode AI Assistant
 - 💬 **Chat Mode** - Fast conversations with GPT-5
@@ -106,4 +109,4 @@ MIT License
 
 ---
 
-**Status**: ✅ Phase 1-3 完成 | **Version**: 0.1.0 | **Updated**: 2025-10-04
+**Status**: ✅ Phase 1-3 完成 | **Version**: 0.2.0 | **Updated**: 2025-10-06

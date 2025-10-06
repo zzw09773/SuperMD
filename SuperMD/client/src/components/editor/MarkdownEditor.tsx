@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { autocompletion } from '@codemirror/autocomplete';
 import PreviewPane from './PreviewPane';
 import EditorToolbar from './EditorToolbar';
 import SaveStatus from '../common/SaveStatus';
@@ -9,6 +10,7 @@ import CollaborationStatus from '../collaboration/CollaborationStatus';
 import useAutoSave from '../../hooks/useAutoSave';
 import useCollaboration from '../../hooks/useCollaboration';
 import { documentAPI } from '../../services/api';
+import { markdownAutocomplete } from '../../utils/markdownAutocomplete';
 
 interface MarkdownEditorProps {
   documentId: string | null;
@@ -134,7 +136,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
               value={content}
               height="100%"
               theme={oneDark}
-              extensions={[markdown()]}
+              extensions={[
+                markdown(),
+                autocompletion({
+                  override: [markdownAutocomplete],
+                  activateOnTyping: true,
+                  maxRenderedOptions: 10,
+                }),
+              ]}
               onChange={handleChange}
               className="h-full"
             />

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { marked } from 'marked';
 import { jsPDF } from 'jspdf';
-import asBlob from 'html-docx-js/dist/html-docx';
+import HtmlToDocx from '@turbodocx/html-to-docx';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -58,8 +58,11 @@ export const exportDocument = async (
   res: Response
 ): Promise<void> => {
   try {
+    console.log(`[Export] Starting export - Format: ${format}, Title: ${title}`);
+
     // Embed images for export
     const contentWithEmbeddedImages = await embedImages(content);
+    console.log(`[Export] Content length after embedding: ${contentWithEmbeddedImages.length} characters`);
 
     switch (format) {
       case 'md':
@@ -80,8 +83,11 @@ export const exportDocument = async (
       default:
         res.status(400).json({ error: `Unsupported format: ${format}` });
     }
+
+    console.log(`[Export] Export completed successfully - Format: ${format}`);
   } catch (error) {
     console.error('[Export Service] Error:', error);
+    console.error('[Export Service] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     res.status(500).json({ error: 'Export failed' });
   }
 };
@@ -159,39 +165,70 @@ async function exportHTML(content: string, title: string, res: Response): Promis
  * Export as PDF (.pdf)
  */
 async function exportPDF(content: string, title: string, res: Response): Promise<void> {
-  const htmlContent = await marked(content);
+  try {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
 
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
+    // Add title
+    doc.setFontSize(20);
+    doc.text(title, 20, 20);
 
-  // Add title
-  doc.setFontSize(20);
-  doc.text(title, 20, 20);
+    // Process content line by line
+    doc.setFontSize(12);
+    const lines = content.split('\n');
+    let y = 40;
 
-  // Add content (simple text rendering - for advanced HTML rendering, use html2pdf)
-  doc.setFontSize(12);
-  const lines = content.split('\n');
-  let y = 40;
+    for (const line of lines) {
+      // Check if line contains base64 image
+      const base64ImageMatch = line.match(/!\[([^\]]*)\]\(data:image\/([^;]+);base64,([^\)]+)\)/);
 
-  lines.forEach((line) => {
-    if (y > 280) {
-      doc.addPage();
-      y = 20;
+      if (base64ImageMatch) {
+        // Add image to PDF
+        try {
+          const [, altText, imageType, base64Data] = base64ImageMatch;
+          const imgFormat = imageType.toUpperCase() === 'JPG' ? 'JPEG' : imageType.toUpperCase();
+
+          // Add image (max width 170mm to fit A4 with margins)
+          if (y > 200) {
+            doc.addPage();
+            y = 20;
+          }
+
+          doc.addImage(`data:image/${imageType};base64,${base64Data}`, imgFormat, 20, y, 170, 0);
+          y += 100; // Estimated image height
+        } catch (imgError) {
+          console.error('[PDF] Failed to add image:', imgError);
+          // If image fails, just add placeholder text
+          doc.text(`[Image: ${base64ImageMatch[1] || 'image'}]`, 20, y);
+          y += 10;
+        }
+      } else if (line.trim()) {
+        // Regular text line
+        if (y > 280) {
+          doc.addPage();
+          y = 20;
+        }
+        // Remove markdown formatting for simple display
+        const cleanLine = line.replace(/[#*_~`]/g, '').replace(/!\[[^\]]*\]\([^\)]+\)/g, '').substring(0, 80);
+        if (cleanLine.trim()) {
+          doc.text(cleanLine, 20, y);
+          y += 7;
+        }
+      }
     }
-    // Remove markdown formatting for simple display
-    const cleanLine = line.replace(/[#*_~`]/g, '').substring(0, 80);
-    doc.text(cleanLine, 20, y);
-    y += 7;
-  });
 
-  const pdfBuffer = doc.output('arraybuffer');
+    const pdfBuffer = doc.output('arraybuffer');
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(title)}.pdf"`);
-  res.send(Buffer.from(pdfBuffer));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(title)}.pdf"`);
+    res.send(Buffer.from(pdfBuffer));
+  } catch (error) {
+    console.error('[PDF] Export error:', error);
+    throw error;
+  }
 }
 
 /**
@@ -201,25 +238,36 @@ async function exportDOCX(content: string, title: string, res: Response): Promis
   try {
     const htmlContent = await marked(content);
 
-    const fullHTML = `
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>${escapeHtml(title)}</title>
-        </head>
-        <body>
-          <h1>${escapeHtml(title)}</h1>
-          ${htmlContent}
-        </body>
-      </html>
-    `;
+    const fullHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`;
 
-    // asBlob returns an ArrayBuffer, we need to convert it properly
-    const docxBlob = asBlob(fullHTML);
+    // Generate DOCX using @turbodocx/html-to-docx
+    const docxResult = await HtmlToDocx(fullHTML);
+
+    // Convert result to Buffer
+    let docxBuffer: Buffer;
+    if (docxResult instanceof Buffer) {
+      docxBuffer = docxResult;
+    } else if (docxResult instanceof ArrayBuffer) {
+      docxBuffer = Buffer.from(docxResult);
+    } else {
+      // It's a Blob
+      const arrayBuffer = await (docxResult as Blob).arrayBuffer();
+      docxBuffer = Buffer.from(arrayBuffer);
+    }
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(title)}.docx"`);
-    res.send(Buffer.from(docxBlob));
+    res.send(docxBuffer);
   } catch (error) {
     console.error('[Export] DOCX generation error:', error);
     throw error;
