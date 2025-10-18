@@ -99,62 +99,122 @@ const useChat = (documentId?: string) => {
         setIsLoading(false);
       } else if (mode === 'research') {
         // Use Research API with SSE
+        const token = localStorage.getItem('token');
+        const params = new URLSearchParams({
+          query: content,
+        });
+
+        if (documentContent) {
+          params.set('documentContent', documentContent);
+        }
+
+        if (token) {
+          params.set('token', token);
+        }
+
         const eventSource = new EventSource(
-          `http://localhost:3000/api/research/query?query=${encodeURIComponent(content)}${
-            documentContent ? `&documentContent=${encodeURIComponent(documentContent)}` : ''
-          }`
+          `http://localhost:3000/api/research/query?${params.toString()}`
         );
 
         let fullResponse = '';
         let toolCalls: any[] = [];
         let sources: string[] = [];
 
+        let hasReceivedData = false;
+
         eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
+          hasReceivedData = true;
 
-          if (data.type === 'reasoning') {
-            // Show reasoning as system message
-            const reasoningMsg: ChatMessage = {
-              id: `reasoning-${Date.now()}`,
-              role: 'system',
-              content: data.content,
-              timestamp: new Date(),
-              metadata: { type: 'reasoning' },
-            };
-            setMessages((prev) => [...prev, reasoningMsg]);
-          } else if (data.type === 'chunk') {
-            fullResponse += data.content;
-          } else if (data.done) {
-            fullResponse = data.fullResponse || fullResponse;
-            toolCalls = data.toolCalls || [];
-            sources = data.sources || [];
+          // Handle [DONE] signal
+          if (event.data === '[DONE]') {
+            return;
+          }
 
-            const assistantMessage: ChatMessage = {
-              id: `assistant-${Date.now()}`,
-              role: 'assistant',
-              content: fullResponse,
-              timestamp: new Date(),
-              toolCalls,
-              sources,
-            };
-            setMessages((prev) => [...prev, assistantMessage]);
-            saveChatMessage(assistantMessage, mode); // Fire and forget
-            setIsLoading(false);
-            eventSource.close();
+          try {
+            const data = JSON.parse(event.data);
+
+            // Handle error events
+            if (data.error) {
+              console.error('[Research SSE] Error event:', data.error);
+              setMessages(prev => [
+                ...prev,
+                {
+                  id: `error-${Date.now()}`,
+                  role: 'assistant',
+                  content: `Research error: ${data.error}`,
+                  timestamp: new Date(),
+                },
+              ]);
+              setIsLoading(false);
+              eventSource.close();
+              return;
+            }
+
+            if (data.type === 'reasoning') {
+              // Replace last reasoning message instead of adding new one
+              setMessages((prev) => {
+                // Remove previous reasoning messages
+                const filtered = prev.filter(m => m.metadata?.type !== 'reasoning');
+
+                // Add new reasoning message
+                const reasoningMsg: ChatMessage = {
+                  id: 'reasoning-current',
+                  role: 'system',
+                  content: data.content,
+                  timestamp: new Date(),
+                  metadata: { type: 'reasoning' },
+                };
+
+                return [...filtered, reasoningMsg];
+              });
+            } else if (data.type === 'chunk') {
+              fullResponse += data.content;
+            } else if (data.done) {
+              fullResponse = data.fullResponse || fullResponse;
+              toolCalls = data.toolCalls || [];
+              sources = data.sources || [];
+
+              const assistantMessage: ChatMessage = {
+                id: `assistant-${Date.now()}`,
+                role: 'assistant',
+                content: fullResponse,
+                timestamp: new Date(),
+                toolCalls,
+                sources,
+              };
+
+              // Remove reasoning messages and add final answer
+              setMessages((prev) => {
+                const filtered = prev.filter(m => m.metadata?.type !== 'reasoning');
+                return [...filtered, assistantMessage];
+              });
+              saveChatMessage(assistantMessage, mode); // Fire and forget
+              setIsLoading(false);
+              eventSource.close();
+            }
+          } catch (parseError) {
+            console.error('[Research SSE] Failed to parse event data:', event.data, parseError);
           }
         };
 
-        eventSource.onerror = () => {
+        eventSource.onerror = (error) => {
+          console.error('[Research SSE] Connection error:', error);
           eventSource.close();
-          setMessages(prev => [
-            ...prev,
-            {
-              id: `error-${Date.now()}`,
-              role: 'assistant',
-              content: 'Research failed. Please try again.',
-              timestamp: new Date(),
-            },
-          ]);
+
+          // Only show error if no data was received (connection failed)
+          // If data was received, the stream probably just ended normally
+          if (!hasReceivedData) {
+            setMessages(prev => [
+              ...prev,
+              {
+                id: `error-${Date.now()}`,
+                role: 'assistant',
+                content: 'Failed to connect to Research service. Please check your connection and try again.',
+                timestamp: new Date(),
+              },
+            ]);
+          }
+
           setIsLoading(false);
         };
       } else {

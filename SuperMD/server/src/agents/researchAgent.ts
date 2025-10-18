@@ -13,6 +13,8 @@ import {
   summarizationTool,
   codeExplanationTool,
 } from './tools';
+import { appendAgentMemory, loadAgentMemory, type AgentMemoryEntryInput } from '../lib/agentMemory';
+import { requireLLMConfig } from '../config/aiConfig';
 
 type ResearchAgentConfig = {
   documentContent?: string;
@@ -34,10 +36,14 @@ const toolDisplayNames: Record<string, string> = {
 
 // Initialize LLM
 function getLLM() {
+  const llmConfig = requireLLMConfig('ResearchAgent');
   return new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL || 'gpt-5-mini',
+    modelName: llmConfig.modelName,
     temperature: 1, // GPT-5 only supports temperature=1
-    apiKey: process.env.OPENAI_API_KEY,
+    configuration: {
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseURL,
+    },
   });
 }
 
@@ -247,9 +253,35 @@ export async function streamResearchResponse(
   query: string,
   documentContent?: string,
   onChunk?: (data: any) => void,
+  options?: { userId?: string },
 ): Promise<ResearchResult> {
   try {
     const agent = await createResearchAgent(documentContent);
+
+    const userId = options?.userId;
+    const memoryMessages: Array<{ role: string; content: string }> = [];
+
+    if (userId) {
+      const memory = await loadAgentMemory(userId, 'research');
+
+      if (memory.summary) {
+        memoryMessages.push({
+          role: 'system',
+          content: `Research 對話摘要:\n${memory.summary.content}`,
+        });
+      }
+
+      for (const entry of memory.entries) {
+        const role =
+          entry.role === 'human'
+            ? 'user'
+            : entry.role === 'assistant'
+            ? 'assistant'
+            : 'system';
+
+        memoryMessages.push({ role, content: entry.content });
+      }
+    }
 
     let fullResponse = '';
     const toolCalls: ToolCall[] = [];
@@ -261,7 +293,7 @@ export async function streamResearchResponse(
 
     const stream = (await agent.stream(
       {
-        messages: [{ role: 'user', content: query }],
+        messages: [...memoryMessages, { role: 'user', content: query }],
       },
       runConfig,
     )) as AsyncIterable<unknown>;
@@ -394,6 +426,27 @@ export async function streamResearchResponse(
       if (!fullResponse) {
         fullResponse = 'Research agent did not return a response';
       }
+    }
+
+    if (userId) {
+      const memoryEntries: AgentMemoryEntryInput[] = [
+        { role: 'human' as const, content: query },
+        {
+          role: 'assistant' as const,
+          content: fullResponse,
+          metadata: sources.length ? { sources } : undefined,
+        },
+      ];
+
+      if (sources.length > 0) {
+        memoryEntries.push({
+          role: 'system' as const,
+          content: `SOURCES: ${sources.join(', ')}`,
+          metadata: { type: 'sources', sources },
+        });
+      }
+
+      await appendAgentMemory(userId, 'research', memoryEntries);
     }
 
     return {

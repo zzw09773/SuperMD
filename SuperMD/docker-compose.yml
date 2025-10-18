@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector extension for RAG functionality
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: supermd-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: supermd
+    ports:
+      - "25432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for caching RAG search results
+  redis:
+    image: redis:alpine
+    container_name: supermd-redis
+    ports:
+      - "26379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  default:
+    name: supermd-network

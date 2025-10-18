@@ -106,15 +106,28 @@ const ChatBotPanel = ({ documentContent, documentId, onInsertContent }: ChatBotP
                     : 'bg-[#2d2d2d] text-gray-200 max-w-[80%]'
                 }`}
               >
-              {/* Show reasoning with marquee/typing effect */}
+              {/* Show reasoning with simple animated indicator */}
               {message.metadata?.type === 'reasoning' ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="inline-block w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                <div className="flex items-center gap-3 py-1">
+                  {/* Animated thinking indicator */}
+                  <div className="relative flex items-center justify-center w-6 h-6 flex-shrink-0">
+                    {/* Rotating border */}
+                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-400 border-r-purple-400 animate-spin"></div>
+                    {/* Pulsing core */}
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
                   </div>
-                  <p className="text-xs font-medium text-purple-200">{message.content}</p>
+
+                  {/* Text content - no scrolling, just simple display */}
+                  <p className="text-sm font-medium text-purple-100 flex-1">
+                    {message.content}
+                  </p>
+
+                  {/* Trailing dots animation */}
+                  <div className="flex gap-1 flex-shrink-0">
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="inline-block w-1.5 h-1.5 bg-purple-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>

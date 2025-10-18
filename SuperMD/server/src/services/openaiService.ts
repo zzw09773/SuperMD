@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { Request, Response } from 'express';
+import { requireLLMConfig } from '../config/aiConfig';
 
 // Initialize OpenAI client
 let openaiClient: OpenAI | null = null;
@@ -7,12 +8,12 @@ let openaiClient: OpenAI | null = null;
 function getOpenAIClient(): OpenAI {
   if (openaiClient) return openaiClient;
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY not set. Please add OPENAI_API_KEY=sk-xxx to server/.env');
-  }
+  const llmConfig = requireLLMConfig('OpenAIService');
 
-  openaiClient = new OpenAI({ apiKey });
+  openaiClient = new OpenAI({
+    apiKey: llmConfig.apiKey,
+    baseURL: llmConfig.baseURL,
+  });
   return openaiClient;
 }
 

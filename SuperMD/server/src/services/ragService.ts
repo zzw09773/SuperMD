@@ -4,12 +4,18 @@ import pool from '../lib/pgvector';
 import { cacheService } from '../lib/redis';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { requireEmbeddingConfig } from '../config/aiConfig';
 
 dotenv.config();
 
+const embeddingConfig = requireEmbeddingConfig('ragService');
+
 const embeddings = new OpenAIEmbeddings({
-  openAIApiKey: process.env.OPENAI_API_KEY,
-  modelName: 'text-embedding-3-small',
+  modelName: embeddingConfig.modelName,
+  configuration: {
+    apiKey: embeddingConfig.apiKey,
+    baseURL: embeddingConfig.baseURL,
+  },
 });
 
 /**

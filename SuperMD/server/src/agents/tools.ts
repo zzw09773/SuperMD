@@ -2,6 +2,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import axios from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
+import { requireLLMConfig } from '../config/aiConfig';
 
 type WritingTask = 'improve' | 'grammar' | 'simplify' | 'formal' | 'casual';
 type SummaryLength = 'short' | 'medium' | 'long';
@@ -214,10 +215,14 @@ export const githubSearchTool = new DynamicStructuredTool({
  * Helper: Initialize LLM for AI tools
  */
 function getLLM() {
+  const llmConfig = requireLLMConfig('AgentTools');
   return new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL || 'gpt-5-mini',
+    modelName: llmConfig.modelName,
     temperature: 1,
-    apiKey: process.env.OPENAI_API_KEY,
+    configuration: {
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseURL,
+    },
   });
 }
 

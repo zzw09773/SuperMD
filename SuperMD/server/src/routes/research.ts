@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { streamResearchResponse } from '../agents/researchAgent';
+import { verifyToken } from '../services/authService';
+import { getLLMConfig } from '../config/aiConfig';
 
 const router = Router();
 
@@ -11,6 +13,30 @@ router.get('/query', async (req: Request, res: Response): Promise<void> => {
     if (!query || typeof query !== 'string') {
       res.status(400).json({ error: 'Query is required' });
       return;
+    }
+
+    let userId: string | undefined;
+
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const token = authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7)
+        : authHeader;
+      try {
+        const payload = verifyToken(token);
+        userId = payload.userId;
+      } catch (error) {
+        console.warn('[Research API] Failed to verify Authorization header token');
+      }
+    }
+
+    if (!userId && typeof req.query.token === 'string') {
+      try {
+        const payload = verifyToken(req.query.token);
+        userId = payload.userId;
+      } catch (error) {
+        console.warn('[Research API] Failed to verify token query parameter');
+      }
     }
 
     // Set up SSE
@@ -27,7 +53,8 @@ router.get('/query', async (req: Request, res: Response): Promise<void> => {
       documentContent as string | undefined,
       (data) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
-      }
+      },
+      { userId }
     );
 
     res.write(`data: ${JSON.stringify({
@@ -39,14 +66,20 @@ router.get('/query', async (req: Request, res: Response): Promise<void> => {
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (error) {
-    console.error('[Research API] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+
+    console.error('[Research API] Error:', errorMessage);
+    console.error('[Research API] Stack:', errorStack);
 
     if (!res.headersSent) {
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Research query failed',
+        error: errorMessage,
       });
     } else {
-      res.write(`data: ${JSON.stringify({ error: 'Research failed' })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        error: `Research failed: ${errorMessage}`
+      })}\n\n`);
       res.end();
     }
   }
@@ -54,10 +87,11 @@ router.get('/query', async (req: Request, res: Response): Promise<void> => {
 
 // Get research status
 router.get('/status', (_req: Request, res: Response): Promise<void> => {
+  const llmConfig = getLLMConfig();
   res.json({
     status: 'operational',
     features: ['calculator', 'google_search', 'document_search'],
-    model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+    model: llmConfig.modelName,
   });
   return Promise.resolve();
 });

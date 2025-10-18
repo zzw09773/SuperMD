@@ -7,8 +7,12 @@ export interface CredentialsModalProps {
 }
 
 export interface StoredCredentials {
-  openaiApiKey: string;
-  openaiBaseUrl: string;
+  llmApiKey: string;
+  llmBaseUrl: string;
+  llmModel: string;
+  embeddingApiKey: string;
+  embeddingBaseUrl: string;
+  embeddingModel: string;
   googleSearchEngineId: string;
   googleServiceJson: string;
 }
@@ -16,8 +20,12 @@ export interface StoredCredentials {
 const STORAGE_KEY = 'supermd.credentials';
 
 const defaultCredentials: StoredCredentials = {
-  openaiApiKey: '',
-  openaiBaseUrl: '',
+  llmApiKey: '',
+  llmBaseUrl: '',
+  llmModel: '',
+  embeddingApiKey: '',
+  embeddingBaseUrl: '',
+  embeddingModel: '',
   googleSearchEngineId: '',
   googleServiceJson: '',
 };
@@ -44,8 +52,36 @@ export function CredentialsModal({ isOpen, onClose, onTestConnection }: Credenti
         return;
       }
 
-      const parsed = JSON.parse(raw) as StoredCredentials;
-      setCredentials({ ...defaultCredentials, ...parsed });
+      const parsed = JSON.parse(raw) as Partial<StoredCredentials> & {
+        openaiApiKey?: string;
+        openaiBaseUrl?: string;
+      };
+
+      const upgraded: StoredCredentials = {
+        ...defaultCredentials,
+        ...parsed,
+      };
+
+      if (!upgraded.llmApiKey && parsed.openaiApiKey) {
+        upgraded.llmApiKey = parsed.openaiApiKey;
+      }
+      if (!upgraded.llmBaseUrl && parsed.openaiBaseUrl) {
+        upgraded.llmBaseUrl = parsed.openaiBaseUrl;
+      }
+      if (!upgraded.llmModel && parsed.openaiBaseUrl) {
+        upgraded.llmModel = '';
+      }
+      if (!upgraded.embeddingApiKey && parsed.openaiApiKey) {
+        upgraded.embeddingApiKey = parsed.openaiApiKey;
+      }
+      if (!upgraded.embeddingBaseUrl && parsed.openaiBaseUrl) {
+        upgraded.embeddingBaseUrl = parsed.openaiBaseUrl;
+      }
+      if (!upgraded.embeddingModel && parsed.openaiBaseUrl) {
+        upgraded.embeddingModel = '';
+      }
+
+      setCredentials(upgraded);
     } catch (err) {
       console.error('[CredentialsModal] Failed to parse stored credentials', err);
       setCredentials(defaultCredentials);
@@ -118,58 +154,104 @@ export function CredentialsModal({ isOpen, onClose, onTestConnection }: Credenti
         </header>
 
         <section className="grid gap-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">OpenAI API Key</label>
-            <input
-              type="password"
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="sk-..."
-              value={credentials.openaiApiKey}
-              onChange={(event) => handleChange('openaiApiKey', event.target.value)}
-            />
-            <p className="text-xs text-slate-400">
-              僅儲存在本機裝置；若需與後端整合，請在 Spike 報告中確認代理策略。
-            </p>
-          </div>
+  <div className="space-y-4 rounded-lg border border-slate-700/80 bg-slate-900/60 p-4">
+    <h3 className="text-sm font-semibold text-slate-200">LLM 設定</h3>
+    <p className="text-xs text-slate-400">設定主要推理模型的 API Key 與 Base URL，支援自建 Gateway 或第三方代理。</p>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">LLM API Key</label>
+      <input
+        type="password"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="sk-..."
+        value={credentials.llmApiKey}
+        onChange={(event) => handleChange('llmApiKey', event.target.value)}
+      />
+    </div>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">LLM Base URL</label>
+      <input
+        type="text"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="https://your-llm-gateway/v1"
+        value={credentials.llmBaseUrl}
+        onChange={(event) => handleChange('llmBaseUrl', event.target.value)}
+      />
+      <p className="text-xs text-slate-400">若留空則使用預設 OpenAI API Endpoint。</p>
+    </div>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">LLM Model</label>
+      <input
+        type="text"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="例如：gpt-4o-mini"
+        value={credentials.llmModel}
+        onChange={(event) => handleChange('llmModel', event.target.value)}
+      />
+      <p className="text-xs text-slate-400">若留空則後端採用環境變數中設定的模型。</p>
+    </div>
+  </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 sm:gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">OpenAI Base URL（選填）</label>
-              <input
-                type="text"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="https://api.openai.com/v1"
-                value={credentials.openaiBaseUrl}
-                onChange={(event) => handleChange('openaiBaseUrl', event.target.value)}
-              />
-              <p className="text-xs text-slate-400">支援 Azure OpenAI 或自架 proxy。</p>
-            </div>
+  <div className="space-y-4 rounded-lg border border-slate-700/80 bg-slate-900/60 p-4">
+    <h3 className="text-sm font-semibold text-slate-200">Embedding 設定</h3>
+    <p className="text-xs text-slate-400">提供向量索引所使用的嵌入模型，建議與 LLM 分開配置以控制成本。</p>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">Embedding API Key</label>
+      <input
+        type="password"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="sk-..."
+        value={credentials.embeddingApiKey}
+        onChange={(event) => handleChange('embeddingApiKey', event.target.value)}
+      />
+    </div>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">Embedding Base URL</label>
+      <input
+        type="text"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="https://your-embedding-endpoint/v1"
+        value={credentials.embeddingBaseUrl}
+        onChange={(event) => handleChange('embeddingBaseUrl', event.target.value)}
+      />
+      <p className="text-xs text-slate-400">可指向專用 Embedding 服務，例如 text-embedding-3-small。</p>
+    </div>
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-200">Embedding Model</label>
+      <input
+        type="text"
+        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        placeholder="例如：text-embedding-3-small"
+        value={credentials.embeddingModel}
+        onChange={(event) => handleChange('embeddingModel', event.target.value)}
+      />
+      <p className="text-xs text-slate-400">若留空則後端沿用預設的嵌入模型設定。</p>
+    </div>
+  </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">Google Search Engine ID (cx)</label>
-              <input
-                type="text"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="custom search engine id"
-                value={credentials.googleSearchEngineId}
-                onChange={(event) => handleChange('googleSearchEngineId', event.target.value)}
-              />
-            </div>
-          </div>
+  <div className="space-y-2">
+    <label className="block text-sm font-medium text-slate-200">Google Search Engine ID (cx)</label>
+    <input
+      type="text"
+      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      placeholder="custom search engine id"
+      value={credentials.googleSearchEngineId}
+      onChange={(event) => handleChange('googleSearchEngineId', event.target.value)}
+    />
+  </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Google Service Account JSON</label>
-            <textarea
-              className="min-h-[150px] w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder='{ "type": "service_account", ... }'
-              value={credentials.googleServiceJson}
-              onChange={(event) => handleChange('googleServiceJson', event.target.value)}
-            />
-            <p className="text-xs text-slate-400">
-              建議使用安全的服務帳戶；資料僅保存在本機。未來可新增「匯入 JSON」按鈕與即時驗證。
-            </p>
-          </div>
-        </section>
+  <div className="space-y-2">
+    <label className="block text-sm font-medium text-slate-200">Google Service Account JSON</label>
+    <textarea
+      className="min-h-[150px] w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      placeholder='{ "type": "service_account", ... }'
+      value={credentials.googleServiceJson}
+      onChange={(event) => handleChange('googleServiceJson', event.target.value)}
+    />
+    <p className="text-xs text-slate-400">
+      建議僅在本機測試時使用。正式環境請改用安全的 Secret Manager 或後端設定。
+    </p>
+  </div>
+</section>
 
         <footer className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-slate-300">
@@ -204,3 +286,4 @@ export function CredentialsModal({ isOpen, onClose, onTestConnection }: Credenti
 }
 
 export default CredentialsModal;
+

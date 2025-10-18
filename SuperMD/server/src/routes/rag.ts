@@ -198,7 +198,7 @@ router.post('/search', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
- * POST /api/rag/query - Query using Agentic RAG (ReAct Agent)
+ * POST /api/rag/query - Query using Agentic RAG (ReAct Agent) - Non-streaming
  */
 router.post('/query', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -223,17 +223,85 @@ router.post('/query', async (req: Request, res: Response): Promise<void> => {
       query,
       answer: result.answer,
       sources: result.sources,
-      steps: result.steps.map((step: any) => ({
-        tool: step.action?.tool,
-        input: step.action?.toolInput,
-        output: step.observation?.substring(0, 200) + (step.observation?.length > 200 ? '...' : ''),
-      })),
+      steps: result.steps,
     });
   } catch (error) {
     console.error('[RAG API] Agentic query error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to process agentic query',
     });
+  }
+});
+
+/**
+ * GET /api/rag/query-stream - Query using Agentic RAG with SSE streaming
+ * Shows reasoning steps in real-time (like Research mode)
+ */
+router.get('/query-stream', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const query = req.query.query as string;
+
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const userId = req.user.userId;
+
+    if (!query) {
+      res.status(400).json({ error: 'Query parameter is required' });
+      return;
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    console.log(`\n📡 [RAG Stream] Starting for user: ${userId}`);
+    console.log(`❓ Query: "${query}"`);
+
+    // Dynamically import streaming function
+    const { streamAgenticRAG } = await import('../services/agenticRAG');
+
+    try {
+      // Stream reasoning steps
+      for await (const event of streamAgenticRAG(userId, query)) {
+        const data = JSON.stringify(event);
+        res.write(`data: ${data}\n\n`);
+
+        // If done, send final signal and close
+        if (event.done) {
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+      }
+    } catch (streamError) {
+      console.error('[RAG Stream] Streaming error:', streamError);
+
+      // Send error event if headers already sent
+      const errorEvent = {
+        type: 'error',
+        content: streamError instanceof Error ? streamError.message : 'Unknown streaming error',
+        done: true,
+      };
+      res.write(`data: ${JSON.stringify(errorEvent)}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    }
+  } catch (error) {
+    console.error('[RAG API] Stream setup error:', error);
+
+    // If headers not sent yet, can send JSON error
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to start streaming',
+      });
+    } else {
+      // Headers already sent, close the stream
+      res.end();
+    }
   }
 });
 

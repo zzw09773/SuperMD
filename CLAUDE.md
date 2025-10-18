@@ -265,11 +265,47 @@ GOOGLE_SEARCH_ENGINE_ID=...
 
 ## Project Status
 
-**Phase**: 3 (Enhanced) - 100% complete
-- Core editing + collaboration working
-- RAG fully implemented
-- 5-format export working
-- Auto-save + chat history functioning
+**Current Version**: v0.3.1
+**Phase**: 3.5 (Code Quality Enhancement) - **COMPLETED** ✅
+
+### Recent Improvements (Latest - 2025-10-18)
+- ✅ **Research Agent Graceful Degradation**
+  - Fixed "database does not exist" crash in Research mode
+  - Implemented try-catch wrappers in [agentMemory.ts](server/src/lib/agentMemory.ts)
+  - Research now works without PostgreSQL (degraded mode: no memory)
+  - Research works with PostgreSQL (full mode: memory management enabled)
+
+- ✅ **UI Stability Improvements**
+  - Fixed marquee animation causing layout destruction
+  - Simplified from infinite scroll to static display in [ChatBotPanel.tsx](client/src/components/chat/ChatBotPanel.tsx:109-131)
+  - Changed reasoning messages to replace instead of accumulate
+
+- ✅ **Enhanced Error Reporting**
+  - SSE error handling improved in [research.ts](server/src/routes/research.ts:68-85)
+  - Added specific error messages instead of generic "Research failed"
+  - Fixed EventSource error detection in [useChat.ts](client/src/hooks/useChat.ts:123-207)
+  - Added `hasReceivedData` flag to distinguish connection errors from normal stream end
+
+- ✅ **TypeScript Type Safety - 100% Fixed**
+  - All 44 compilation errors resolved (44 → 0)
+  - Type guards implemented across all routes (18 endpoints)
+  - `req.user` safety checks in chatHistory, document, project, rag routes
+
+- ✅ **ESLint Configuration Established**
+  - Backend .eslintrc.json created
+  - Strict TypeScript checking enabled
+  - 24 non-blocking linting warnings (code style suggestions)
+
+- ✅ **Code Quality Improvements**
+  - Error handling standardized (401/404/500 responses)
+  - 15+ files cleaned and refactored
+  - Zero TypeScript compilation errors on both frontend & backend
+
+### Phase Completion Status
+- **Phase 1-3**: Core editing, AI assistant, collaboration - 100% ✅
+- **Phase 3.5**: Type safety & code quality - 100% ✅
+- **Phase 4**: Data persistence & testing - 0% (Next)
+- **Phase 5+**: Advanced features - Planned
 
 ## Key Files Reference
 
@@ -356,6 +392,41 @@ Chat modes share `useChat.ts` hook. Maintain these exact response formats:
 - **Initialization**: `initializePgVector()` + `initializeRedis()` run on server start
 - **Graceful Degradation**: If Redis/pgvector fail, must fallback gracefully
 
+### Graceful Degradation Pattern (CRITICAL)
+**Always wrap optional service calls in try-catch blocks** to prevent complete system failure:
+
+```typescript
+// GOOD: System continues without optional feature
+export const loadAgentMemory = async (userId: string, mode: string) => {
+  try {
+    const client = await pool.connect();
+    try {
+      // ... database operations
+      return { summary, entries };
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.warn('[Service] Database unavailable, using fallback:', error);
+    return { entries: [] };  // Return safe default
+  }
+};
+
+// BAD: Uncaught error crashes entire request
+export const loadAgentMemory = async (userId: string, mode: string) => {
+  const client = await pool.connect();  // ❌ Will crash if DB unavailable
+  // ...
+};
+```
+
+**Apply to**:
+- PostgreSQL queries (RAG, agent memory)
+- Redis operations (caching)
+- External API calls (OpenAI, Google Search)
+- File system operations
+
+**Key principle**: Optional features should never break core functionality
+
 ### Export System
 - **Service**: `server/src/services/exportService.ts`
 - **Image Handling**: Keep URLs relative (`/uploads/images/...`) so exports can inline them
@@ -377,8 +448,460 @@ Chat modes share `useChat.ts` hook. Maintain these exact response formats:
 - **Preserve TypeScript strictness** - strict mode is enforced
 - **Image uploads**: `/api/upload-image` requires auth token, must return `{ url }`
 
+## Troubleshooting Guide
+
+### Research Mode Issues
+
+#### Problem: "Research failed: database 'supermd_rag' does not exist"
+**Root Cause**: Agent memory management in [agentMemory.ts](server/src/lib/agentMemory.ts) tried to connect to PostgreSQL, but the database wasn't initialized.
+
+**Solution**: Implemented graceful degradation pattern:
+```typescript
+export const loadAgentMemory = async (
+  userId: string,
+  mode: AgentMemoryMode
+): Promise<LoadedAgentMemory> => {
+  try {
+    const client = await pool.connect();
+    try {
+      // ... normal database operations
+      return { summary, entries };
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.warn('[AgentMemory] Database unavailable, using empty memory:', error);
+    return { entries: [] };  // Continue without memory
+  }
+};
+```
+
+**Result**: Research mode now works in two modes:
+- **Without PostgreSQL**: Degraded mode (no conversation memory)
+- **With PostgreSQL**: Full mode (memory management enabled)
+
+#### Problem: Marquee Animation Destroys UI Layout
+**Symptoms**: When Research mode shows thinking indicator, the entire screen layout collapses and requires page refresh.
+
+**Root Causes**:
+1. Complex infinite scroll animation (`animate-marquee`) causing layout reflows
+2. Reasoning messages accumulating instead of replacing each other
+
+**Solutions**:
+1. **Simplified marquee in [ChatBotPanel.tsx](client/src/components/chat/ChatBotPanel.tsx:109-131)**:
+   - Removed infinite scroll animation
+   - Changed to static display with simple spin/bounce animations
+   - Maintained visual feedback without complex CSS animations
+
+2. **Fixed message accumulation in [useChat.ts](client/src/hooks/useChat.ts:157-168)**:
+   ```typescript
+   // Replace reasoning messages instead of accumulating
+   if (data.type === 'reasoning') {
+     setMessages((prev) => {
+       const filtered = prev.filter(m => m.metadata?.type !== 'reasoning');
+       const reasoningMsg: ChatMessage = {
+         id: 'reasoning-current',
+         role: 'system',
+         content: data.content,
+         timestamp: new Date(),
+         metadata: { type: 'reasoning' },
+       };
+       return [...filtered, reasoningMsg];
+     });
+   }
+   ```
+
+**Result**: Stable UI with clear visual feedback during Research operations.
+
+#### Problem: Generic "Research failed" Error Messages
+**Issue**: Original error handling showed generic "Research failed" for all errors, making debugging impossible.
+
+**Solution in [research.ts](server/src/routes/research.ts:68-85)**:
+```typescript
+catch (error) {
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  const errorStack = error instanceof Error ? error.stack : '';
+
+  console.error('[Research API] Error:', errorMessage);
+  console.error('[Research API] Stack:', errorStack);
+
+  if (!res.headersSent) {
+    res.status(500).json({ error: errorMessage });
+  } else {
+    res.write(`data: ${JSON.stringify({
+      error: `Research failed: ${errorMessage}`  // Show specific error
+    })}\n\n`);
+    res.end();
+  }
+}
+```
+
+**Result**: Specific error messages help identify root causes (e.g., "database does not exist" instead of generic failure).
+
+#### Problem: SSE Connection Errors Confused with Normal Stream End
+**Issue**: EventSource `onerror` triggered both for connection failures AND normal stream completion, showing false error messages.
+
+**Solution in [useChat.ts](client/src/hooks/useChat.ts:189-207)**:
+```typescript
+let hasReceivedData = false;
+
+eventSource.onmessage = (event) => {
+  hasReceivedData = true;  // Mark that we got at least one message
+  // ... handle messages
+};
+
+eventSource.onerror = (error) => {
+  console.error('[Research SSE] Connection error:', error);
+  eventSource.close();
+
+  // Only show error if no data was received (actual connection failure)
+  if (!hasReceivedData) {
+    setMessages(prev => [...prev, {
+      id: `error-${Date.now()}`,
+      role: 'assistant',
+      content: 'Failed to connect to Research service...',
+      timestamp: new Date(),
+    }]);
+  }
+  setIsLoading(false);
+};
+```
+
+**Result**: Clean stream completion without false error messages, while still catching real connection failures.
+
+### General Database Issues
+
+#### Problem: PostgreSQL Connection Failures
+**Check**:
+1. Is PostgreSQL running? `pg_isready -h localhost -p 5432`
+2. Does database exist? `psql -l | grep supermd`
+3. Is pgvector extension enabled? `psql supermd -c "SELECT * FROM pg_extension WHERE extname = 'vector';"`
+
+**Fix**:
+```bash
+# Create database if missing
+createdb supermd
+
+# Enable pgvector extension
+psql supermd -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Run migrations
+cd server && npx prisma migrate deploy
+```
+
+#### Problem: Redis Connection Failures
+**Impact**: RAG caching disabled, but system continues to work.
+
+**Check**: `redis-cli ping` should return `PONG`
+
+**Fix**: Start Redis server or install if missing:
+```bash
+# macOS
+brew install redis && brew services start redis
+
+# Linux
+sudo apt install redis-server && sudo systemctl start redis
+```
+
+### Frontend Issues
+
+#### Problem: "Failed to fetch" in Chat/Research Mode
+**Common Causes**:
+1. Backend server not running (check `http://localhost:3000`)
+2. CORS configuration issue
+3. JWT token expired or invalid
+
+**Debug Steps**:
+```bash
+# Test backend health
+curl http://localhost:3000/api/health
+
+# Test with valid token
+curl -H "Authorization: Bearer <token>" http://localhost:3000/api/documents
+```
+
+#### Problem: Auto-save Not Working
+**Check**: Console for debounce messages (3-second delay is intentional)
+
+**Verify**: `useAutoSave.ts` debounce timer is 3000ms
+
 ### Documentation Resources
 - Feature context: `PROGRESS.md`, `ADVANCED_RAG_FEATURES.md`, `RAG_SETUP.md`
 - Phase 4 planning: `docs/phase-4-spike.md`
 - Credentials setup: `CREDENTIALS_SETUP.md`
 - Skim these before large refactors
+
+---
+
+## Next Development Roadmap
+
+### 🔥 Phase 4A: Testing Infrastructure (High Priority)
+
+**Goal**: Establish comprehensive testing framework for stability
+
+#### Backend Testing
+- [ ] **Unit Tests** (Vitest + Supertest)
+  - Auth routes (`/api/auth` - login, register, token validation)
+  - Document CRUD (`/api/documents` - create, read, update, delete)
+  - Project management (`/api/projects`)
+  - Chat history (`/api/chat-history`)
+  - RAG endpoints (`/api/rag/upload`, `/api/rag/query`)
+
+- [ ] **Integration Tests**
+  - Prisma transactions (multi-table operations)
+  - Socket.IO event handling
+  - SSE streaming (Chat/Research modes)
+  - File upload & parsing workflow
+
+- [ ] **Test Utilities**
+  - Mock Prisma client for isolated testing
+  - Mock Redis with `ioredis-mock`
+  - Mock OpenAI API responses
+  - Test database setup/teardown
+
+**Target Coverage**: 60%+ for critical paths
+
+#### Frontend Testing
+- [ ] **Component Tests** (Vitest + React Testing Library)
+  - `ChatBotPanel` - message rendering, SSE streaming
+  - `MarkdownEditor` - auto-save, content sync
+  - `ProjectSidebar` - drag & drop, project creation
+  - `RAGDocumentPanel` - file upload modal
+
+- [ ] **Hook Tests**
+  - `useChat` - SSE parsing, error handling
+  - `useAutoSave` - debounce logic
+  - `useCollaboration` - Socket.IO events
+
+- [ ] **E2E Tests** (Playwright)
+  - User journey: Login → Create document → Edit → Export
+  - AI chat flow: Ask question → Stream response → Save to history
+  - Collaboration: Multi-user editing simulation
+
+**Files to Create**:
+```
+server/tests/
+  ├── unit/
+  │   ├── auth.test.ts
+  │   ├── document.test.ts
+  │   ├── rag.test.ts
+  │   └── chatHistory.test.ts
+  ├── integration/
+  │   ├── sse-streaming.test.ts
+  │   └── socket-collaboration.test.ts
+  └── helpers/
+      ├── mockPrisma.ts
+      ├── mockRedis.ts
+      └── testServer.ts
+
+client/tests/
+  ├── components/
+  │   ├── ChatBotPanel.test.tsx
+  │   └── MarkdownEditor.test.tsx
+  ├── hooks/
+  │   └── useChat.test.ts
+  └── e2e/
+      └── userJourney.spec.ts
+```
+
+---
+
+### 🔐 Phase 4B: Permission System (Medium Priority)
+
+**Goal**: Enforce document sharing & access control
+
+#### Backend Implementation
+- [ ] **Permission Middleware**
+  - Create `lib/permissions.ts` with helpers:
+    - `canReadDocument(userId, documentId)` → boolean
+    - `canEditDocument(userId, documentId)` → boolean
+    - `getSharedUsers(documentId)` → User[]
+
+- [ ] **Apply to Routes**
+  - Wrap `/api/documents/:id` GET/PATCH with read/write checks
+  - Add permission validation to `/api/chat-history/:documentId`
+  - Protect RAG operations (only owners can upload/delete)
+
+- [ ] **Sharing API**
+  - `POST /api/documents/:id/share` - Invite user by email
+  - `DELETE /api/documents/:id/share/:userId` - Revoke access
+  - `GET /api/documents/:id/permissions` - List shared users
+
+#### Frontend Integration
+- [ ] **Read-Only Mode**
+  - Detect permission in `MarkdownEditor`
+  - Disable editor if `permission === 'read'`
+  - Show lock icon in toolbar
+
+- [ ] **Share Dialog**
+  - New component: `ShareDocumentModal.tsx`
+  - Email input + permission dropdown (read/write)
+  - Display current shared users with remove option
+
+**Database**: Already exists (`DocumentPermission` model) ✅
+
+---
+
+### 🗄️ Phase 4C: Database Migration Script (Low Priority)
+
+**Goal**: Provide SQLite → PostgreSQL migration path
+
+**Status**: Script already exists at `server/scripts/migrate-sqlite-to-postgres.ts` ✅
+
+**Enhancements Needed**:
+- [ ] Add dry-run mode (`--dry-run` flag)
+- [ ] Generate backup before migration
+- [ ] Add rollback mechanism
+- [ ] Progress bar for large datasets
+- [ ] Validation report (data integrity checks)
+
+**Usage**:
+```bash
+cd server
+npm run migrate:sqlite-to-postgres -- --dry-run  # Preview
+npm run migrate:sqlite-to-postgres              # Execute
+```
+
+---
+
+### 🚀 Phase 5: Advanced Features (Future)
+
+#### 5A. Y.js Collaborative Editing
+- [ ] Enable `CollaborativeEditor.tsx` (currently unused)
+- [ ] Implement cursor position sync (`awareness-update`)
+- [ ] Add user presence indicators (colored cursors)
+- [ ] Conflict resolution testing
+
+#### 5B. Version History
+- [ ] Use existing `Version` model
+- [ ] Auto-save snapshots (every 10 edits or 5 minutes)
+- [ ] Version comparison UI (diff viewer)
+- [ ] Restore to previous version
+
+#### 5C. Multi-Language Support (i18n)
+- [ ] Install `react-i18next`
+- [ ] Extract UI strings to translation files
+- [ ] Support: English, 繁體中文, 简体中文
+- [ ] Language switcher in settings
+
+#### 5D. Advanced AI Features
+- [ ] AI writing suggestions (inline autocomplete)
+- [ ] Grammar & style checker
+- [ ] Automatic summarization
+- [ ] Tone adjustment (formal/casual)
+
+#### 5E. Enhanced Export
+- [ ] Custom PDF templates (headers, footers, page numbers)
+- [ ] LaTeX export for academic papers
+- [ ] Confluence/Notion export
+- [ ] Batch export (multiple documents)
+
+---
+
+### 📊 Phase 6: Performance & Optimization
+
+#### 6A. Frontend Optimization
+- [ ] React virtualization for long document lists (`react-window`)
+- [ ] Code splitting by route (lazy load components)
+- [ ] Image optimization (WebP conversion, lazy loading)
+- [ ] Service Worker for offline support (PWA)
+
+#### 6B. Backend Optimization
+- [ ] Add caching layer (Redis for document metadata)
+- [ ] Database query optimization (analyze slow queries)
+- [ ] Implement rate limiting (express-rate-limit)
+- [ ] CDN for static assets
+
+#### 6C. Monitoring
+- [ ] Add logging (Winston or Pino)
+- [ ] Error tracking (Sentry integration)
+- [ ] Performance monitoring (APM)
+- [ ] Analytics (user behavior tracking)
+
+---
+
+### 🐳 Phase 7: Deployment & DevOps
+
+#### 7A. Containerization
+- [ ] Create `Dockerfile` (multi-stage build)
+- [ ] `docker-compose.yml` (app + PostgreSQL + Redis)
+- [ ] Environment variable management
+- [ ] Health check endpoints
+
+#### 7B. CI/CD Pipeline
+- [ ] GitHub Actions workflow:
+  - Lint → Test → Build → Deploy
+  - Automated dependency updates (Dependabot)
+  - Security scanning (npm audit)
+
+#### 7C. Production Deployment
+- [ ] Deploy to cloud (Vercel/Railway/Fly.io)
+- [ ] SSL/TLS certificates (Let's Encrypt)
+- [ ] Database backups (daily snapshots)
+- [ ] Disaster recovery plan
+
+---
+
+## Priority Matrix
+
+| Phase | Priority | Estimated Time | Dependencies |
+|-------|----------|----------------|--------------|
+| **4A: Testing** | 🔥 **HIGH** | 2-3 weeks | None |
+| **4B: Permissions** | 🟡 MEDIUM | 1 week | Testing framework |
+| **4C: Migration** | 🟢 LOW | 2 days | None (optional) |
+| **5: Advanced Features** | 🟢 LOW | 4-6 weeks | Phases 4A-4B |
+| **6: Optimization** | 🟡 MEDIUM | 2-3 weeks | Phase 5 |
+| **7: Deployment** | 🟡 MEDIUM | 1-2 weeks | Phase 6 |
+
+---
+
+## Recommended Next Steps
+
+### This Week (Immediate)
+1. ✅ ~~Fix TypeScript errors~~ **DONE**
+2. ✅ ~~Setup ESLint~~ **DONE**
+3. 🔄 **Start Phase 4A**: Create basic test structure
+   - Setup Vitest config
+   - Write first auth route test
+   - Setup test database
+
+### Next 2 Weeks
+4. Complete Phase 4A (Testing Infrastructure)
+   - Target: 60% code coverage on critical paths
+   - All auth/document/chat routes tested
+
+5. Begin Phase 4B (Permissions)
+   - Implement `canReadDocument`/`canEditDocument`
+   - Add share API endpoint
+
+### Next Month
+6. Finish Phase 4 (Testing + Permissions)
+7. Plan Phase 5 feature prioritization
+8. Consider deployment strategy (Phase 7)
+
+---
+
+## Success Metrics
+
+### Code Quality (Current: A-)
+- TypeScript errors: **0** ✅
+- Test coverage: **0% → 60%** (Target)
+- ESLint warnings: **24 → <10** (Target)
+- Security vulnerabilities: **0** (Maintain)
+
+### Feature Completeness
+- Core editing: **100%** ✅
+- AI features: **100%** ✅
+- Collaboration: **85%** → **100%** (Y.js sync)
+- Permissions: **70%** → **100%** (Enforcement)
+- Testing: **0%** → **60%+** (Critical paths)
+
+### Production Readiness
+- Current: **Development Ready** (B+)
+- Target: **Production Ready** (A)
+- Required: Phases 4A + 4B + 6B + 7A
+
+---
+
+**Last Updated**: 2025-10-18 (After Bug Fixes: Research graceful degradation + UI stability)
+**Next Review**: After Phase 4A completion

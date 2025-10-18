@@ -48,6 +48,38 @@ export const initializePgVector = async () => {
       WITH (lists = 100)
     `);
 
+    // Conversation memory tables for agent workflows
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_memory_entries (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tokens INTEGER NOT NULL DEFAULT 0,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS agent_memory_entries_user_mode_idx
+      ON agent_memory_entries (user_id, mode, created_at)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_memory_summaries (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tokens INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (user_id, mode)
+      )
+    `);
+
     console.log('✅ PgVector initialized successfully');
   } catch (error) {
     console.error('❌ Failed to initialize PgVector:', error);

@@ -4,46 +4,41 @@ import { HumanMessage, AIMessage } from '@langchain/core/messages';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
+import { requireLLMConfig } from '../config/aiConfig';
 
 // Lazy model holder to allow .env to load & to fail fast with clearer message
 const modelCache = new Map<string, ChatOpenAI>();
 
 function getModel(opts?: { modelName?: string; temperature?: number }): ChatOpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY 未設定，請在 server/.env 中加入 OPENAI_API_KEY=sk-xxxx');
-  }
+  const llmConfig = requireLLMConfig('ChatService');
+  const modelName = opts?.modelName || llmConfig.modelName;
 
-  const modelName = opts?.modelName || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-
-  // 改用 temperature=1 避免某些模型不支援自訂值
   let temperature = opts?.temperature ?? 1;
 
-  // 某些新模型可能不支援自訂 temperature，只允許 1
   const temperatureLockedModels = new Set(['o3', 'o3-mini', 'gpt-4.1-nano-exp']);
   if (temperatureLockedModels.has(modelName) && temperature !== 1) {
-    console.warn(`[Chat Service] 模型 ${modelName} 強制使用預設 temperature=1`);
+    console.warn(`[Chat Service] Model ${modelName} requires temperature=1. Overriding.`);
     temperature = 1;
   }
 
   const cacheKey = `${modelName}::${temperature}`;
-  if (modelCache.has(cacheKey)) return modelCache.get(cacheKey)!;
+  if (modelCache.has(cacheKey)) {
+    return modelCache.get(cacheKey)!;
+  }
 
   const instance = new ChatOpenAI({
-    apiKey,
     modelName,
     temperature,
+    configuration: {
+      apiKey: llmConfig.apiKey,
+      baseURL: llmConfig.baseURL,
+    },
   });
 
   modelCache.set(cacheKey, instance);
   return instance;
 }
 
-/**
- * Handles the chat request, streaming the response back to the client.
- * @param req The Express request object.
- * @param res The Express response object.
- */
 export const handleChat = async (req: Request, res: Response): Promise<void> => {
   const { messages } = req.body;
 
@@ -104,3 +99,7 @@ User Question: {input}`
     res.end();
   }
 };
+
+
+
+
