@@ -19,11 +19,24 @@ function hasUser(req: Request): req is RequestWithUser {
   return typeof (req as RequestWithUser).user?.userId === 'string';
 }
 
+// Configure multer storage with UTF-8 filename support
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (_req, file, cb) => {
+    // Properly decode UTF-8 filename
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(originalName);
+    const basename = path.basename(originalName, ext);
+    cb(null, `${basename}-${uniqueSuffix}${ext}`);
+  }
+});
+
 // Configure multer for file uploads
 const upload = multer({
-  dest: 'uploads/',
+  storage: storage,
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB (increased for images and code files)
+    fileSize: 50 * 1024 * 1024, // 50MB (increased for large documents and datasets)
   },
   fileFilter: (_req, file, cb) => {
     const allowedTypes = [
@@ -62,7 +75,9 @@ const upload = multer({
       'html', 'css', 'json', 'xml', 'yaml', 'yml',
     ];
 
-    const ext = file.originalname.split('.').pop()?.toLowerCase();
+    // Decode UTF-8 filename properly
+    const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const ext = originalName.split('.').pop()?.toLowerCase();
 
     if (allowedTypes.includes(file.mimetype) || (ext && allowedExtensions.includes(ext))) {
       cb(null, true);
@@ -92,7 +107,10 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     const userId = req.user.userId;
     const file = req.file;
 
-    console.log(`📤 Processing file: ${file.originalname} (${file.size} bytes)`);
+    // Properly decode UTF-8 filename
+    const originalFileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+    console.log(`📤 Processing file: ${originalFileName} (${file.size} bytes)`);
 
     // Parse file content
     const parsed = await parseFile(file.path, file.mimetype);
@@ -100,7 +118,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     // Index document with smart batch processing
     const documentId = await smartIndexDocument(
       userId,
-      file.originalname,
+      originalFileName,
       file.mimetype,
       file.size,
       parsed.content,
@@ -113,7 +131,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     res.json({
       message: 'File uploaded and indexed successfully',
       documentId,
-      fileName: file.originalname,
+      fileName: originalFileName,
       wordCount: parsed.metadata.wordCount,
       pageCount: parsed.metadata.pageCount,
     });
@@ -121,6 +139,106 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     console.error('[RAG API] Upload error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Failed to upload file',
+    });
+  }
+});
+
+/**
+ * POST /api/rag/upload-batch - Upload and index multiple files
+ */
+router.post('/upload-batch', upload.array('files', 20), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: 'No files uploaded' });
+      return;
+    }
+
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const userId = req.user.userId;
+    const results: Array<{
+      fileName: string;
+      status: 'success' | 'error';
+      documentId?: number;
+      error?: string;
+      wordCount?: number;
+      pageCount?: number;
+    }> = [];
+
+    console.log(`📤 Processing batch upload: ${files.length} files`);
+
+    // Process files sequentially to avoid overwhelming the system
+    for (const file of files) {
+      try {
+        // Properly decode UTF-8 filename
+        const originalFileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+        console.log(`  📄 Processing: ${originalFileName} (${file.size} bytes)`);
+
+        // Parse file content
+        const parsed = await parseFile(file.path, file.mimetype);
+
+        // Index document with smart batch processing
+        const documentId = await smartIndexDocument(
+          userId,
+          originalFileName,
+          file.mimetype,
+          file.size,
+          parsed.content,
+          parsed.metadata
+        );
+
+        // Clean up uploaded file
+        await fs.unlink(file.path);
+
+        results.push({
+          fileName: originalFileName,
+          status: 'success',
+          documentId,
+          wordCount: parsed.metadata.wordCount,
+          pageCount: parsed.metadata.pageCount,
+        });
+
+        console.log(`  ✅ Success: ${originalFileName}`);
+      } catch (fileError) {
+        console.error(`  ❌ Error processing ${file.originalname}:`, fileError);
+
+        // Clean up file on error
+        try {
+          await fs.unlink(file.path);
+        } catch (unlinkError) {
+          // Ignore unlink errors
+        }
+
+        results.push({
+          fileName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+          status: 'error',
+          error: fileError instanceof Error ? fileError.message : 'Failed to process file',
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+
+    console.log(`📊 Batch upload complete: ${successCount} success, ${errorCount} errors`);
+
+    res.json({
+      message: `Batch upload complete: ${successCount} success, ${errorCount} errors`,
+      total: files.length,
+      successCount,
+      errorCount,
+      results,
+    });
+  } catch (error) {
+    console.error('[RAG API] Batch upload error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to upload files',
     });
   }
 });

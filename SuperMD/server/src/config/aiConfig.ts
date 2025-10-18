@@ -42,7 +42,7 @@ export const getEmbeddingConfig = (): AIEndpointConfig => {
   const modelName =
     trim(process.env.EMBEDDING_MODEL) ??
     trim(process.env.OPENAI_EMBEDDING_MODEL) ??
-    'text-embedding-3';
+    'text-embedding-3-small';
 
   return {
     apiKey:

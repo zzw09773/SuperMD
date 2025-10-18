@@ -4,6 +4,7 @@ import MarkdownEditor, { MarkdownEditorRef } from '../editor/MarkdownEditor';
 import ChatBotPanel from '../chat/ChatBotPanel';
 import ProjectSidebar from '../sidebar/ProjectSidebar';
 import RAGDocumentPanel from '../rag/RAGDocumentPanel';
+import ErrorBoundary from '../common/ErrorBoundary';
 import { FileDown, FileText, FileCode, FileType, Download, LogOut, User, Database, Settings } from 'lucide-react';
 import CredentialsModal from '../settings/CredentialsModal';
 
@@ -67,13 +68,14 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
       <ProjectSidebar
         currentDocumentId={currentDocumentId}
         onDocumentSelect={onDocumentSelect}
+        currentDocumentContent={markdown}
       />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col">
         {/* Toolbar */}
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-          <div className="flex items-center justify-between">
+        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex-shrink-0">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-4">
               {/* Export Dropdown */}
               <div className="relative">
@@ -167,7 +169,9 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
               <>
                 <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-purple-500 transition-colors" />
                 <Panel defaultSize={30} minSize={20} maxSize={50}>
-                  <RAGDocumentPanel />
+                  <ErrorBoundary fallbackMessage="RAG 知識庫面板遇到錯誤。請嘗試重新載入。">
+                    <RAGDocumentPanel />
+                  </ErrorBoundary>
                 </Panel>
               </>
             )}
@@ -177,14 +181,16 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
               <>
                 <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-green-500 transition-colors" />
                 <Panel defaultSize={30} minSize={20} maxSize={50}>
-                  <ChatBotPanel
-                    documentContent={markdown}
-                    documentId={currentDocumentId || undefined}
-                    onInsertContent={(content) => {
-                      // Insert content at cursor position in editor
-                      editorRef.current?.insertContent(`\n\n${content}\n\n`);
-                    }}
-                  />
+                  <ErrorBoundary fallbackMessage="AI 助手面板遇到錯誤。請嘗試重新載入。">
+                    <ChatBotPanel
+                      documentContent={markdown}
+                      documentId={currentDocumentId || undefined}
+                      onInsertContent={(content) => {
+                        // Insert content at cursor position in editor
+                        editorRef.current?.insertContent(`\n\n${content}\n\n`);
+                      }}
+                    />
+                  </ErrorBoundary>
                 </Panel>
               </>
             )}

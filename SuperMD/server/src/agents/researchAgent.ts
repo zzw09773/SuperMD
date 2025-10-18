@@ -15,6 +15,7 @@ import {
 } from './tools';
 import { appendAgentMemory, loadAgentMemory, type AgentMemoryEntryInput } from '../lib/agentMemory';
 import { requireLLMConfig } from '../config/aiConfig';
+import { searchSimilarDocuments } from '../services/ragService';
 
 type ResearchAgentConfig = {
   documentContent?: string;
@@ -28,6 +29,7 @@ const toolDisplayNames: Record<string, string> = {
   github_search: 'GitHub 程式碼搜尋',
   calculator: '計算器',
   document_search: '文件內容搜尋',
+  knowledge_base_search: 'RAG 知識庫搜尋',
   writing_assistant: '寫作助理',
   translate: '翻譯工具',
   summarize: '摘要工具',
@@ -204,15 +206,64 @@ const documentSearchTool = new DynamicStructuredTool({
   },
 });
 
+// Tool: RAG Knowledge Base Search
+function createKnowledgeBaseSearchTool(userId?: string) {
+  const knowledgeBaseSearchSchema = z.object({
+    query: z.string().describe('The search query to find relevant information in the knowledge base'),
+  });
+
+  return new DynamicStructuredTool({
+    name: 'knowledge_base_search',
+    description: 'Searches through the user\'s personal RAG knowledge base (uploaded documents like PDFs, TXT files, etc.) for relevant information. Use this to find information from documents the user has previously uploaded to their knowledge base.',
+    schema: knowledgeBaseSearchSchema,
+    func: async ({ query }: z.infer<typeof knowledgeBaseSearchSchema>) => {
+      if (!userId) {
+        return '⚠️ Knowledge base search requires user authentication. Please ensure you are logged in.';
+      }
+
+      try {
+        console.log(`[Knowledge Base Search] Searching for: "${query}" (userId: ${userId})`);
+
+        const results = await searchSimilarDocuments(query, userId, 5);
+
+        if (results.length === 0) {
+          return `📚 知識庫搜尋結果：未找到與「${query}」相關的內容。\n\n提示：您可能需要先上傳相關文件到 RAG 知識庫。`;
+        }
+
+        let formattedResults = `📚 知識庫搜尋結果（找到 ${results.length} 個相關片段）：\n\n`;
+
+        results.forEach((result, index) => {
+          const similarityPercent = (result.similarity * 100).toFixed(1);
+          formattedResults += `${index + 1}. **來源：${result.fileName}** (相似度: ${similarityPercent}%)\n`;
+          formattedResults += `   ${result.content}\n\n`;
+        });
+
+        return formattedResults;
+      } catch (error) {
+        console.error('[Knowledge Base Search] Error:', error);
+
+        // Check if error is due to database not available
+        if (error instanceof Error && error.message.includes('database')) {
+          return `⚠️ RAG 知識庫目前無法使用。請確保 PostgreSQL 資料庫已啟動並正確配置。\n\n查詢：「${query}」`;
+        }
+
+        return `搜尋知識庫時發生錯誤：${error instanceof Error ? error.message : 'Unknown error'}`;
+      }
+    },
+  });
+}
+
 // Create Research Agent
-export async function createResearchAgent(documentContent?: string) {
+export async function createResearchAgent(documentContent?: string, userId?: string) {
   const webSearchTool = createWebSearchTool();
+  const knowledgeBaseSearchTool = createKnowledgeBaseSearchTool(userId);
 
   // All available tools
   const tools = [
     calculatorTool,
     webSearchTool,
     documentSearchTool,
+    knowledgeBaseSearchTool,
     // Academic Research Assistant tools
     wikipediaSearchTool,
     arxivSearchTool,
@@ -256,9 +307,8 @@ export async function streamResearchResponse(
   options?: { userId?: string },
 ): Promise<ResearchResult> {
   try {
-    const agent = await createResearchAgent(documentContent);
-
     const userId = options?.userId;
+    const agent = await createResearchAgent(documentContent, userId);
     const memoryMessages: Array<{ role: string; content: string }> = [];
 
     if (userId) {
@@ -291,9 +341,14 @@ export async function streamResearchResponse(
       ? { configurable: { documentContent } as ResearchAgentConfig }
       : undefined;
 
+    const systemMessage = {
+      role: 'system',
+      content: 'IMPORTANT: You MUST respond in Traditional Chinese (繁體中文, zh-TW) ONLY. All your responses, reasoning, and explanations must be in Traditional Chinese, regardless of the input language.',
+    };
+
     const stream = (await agent.stream(
       {
-        messages: [...memoryMessages, { role: 'user', content: query }],
+        messages: [systemMessage, ...memoryMessages, { role: 'user', content: query }],
       },
       runConfig,
     )) as AsyncIterable<unknown>;
@@ -372,6 +427,7 @@ export async function streamResearchResponse(
             'arxiv_search',
             'stackoverflow_search',
             'github_search',
+            'knowledge_base_search',
           ];
           if (toolsWithSources.includes(toolName) && toolResultText) {
             const urlMatches = toolResultText.match(/https?:\/\/[^\s)]+/g);

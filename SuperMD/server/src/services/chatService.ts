@@ -15,7 +15,7 @@ function getModel(opts?: { modelName?: string; temperature?: number }): ChatOpen
 
   let temperature = opts?.temperature ?? 1;
 
-  const temperatureLockedModels = new Set(['o3', 'o3-mini', 'gpt-4.1-nano-exp']);
+  const temperatureLockedModels = new Set(['o3', 'o3-mini', 'gpt-4.1-nano-exp', 'gpt-5']);
   if (temperatureLockedModels.has(modelName) && temperature !== 1) {
     console.warn(`[Chat Service] Model ${modelName} requires temperature=1. Overriding.`);
     temperature = 1;
@@ -65,12 +65,16 @@ export const handleChat = async (req: Request, res: Response): Promise<void> => 
     });
 
     const prompt = PromptTemplate.fromTemplate(
-      `You are a helpful assistant. Answer the user's question based on the following chat history.
+      `You are a helpful assistant. Answer in Traditional Chinese (繁體中文, zh-TW) ONLY.
+
+IMPORTANT: You MUST respond in Traditional Chinese (繁體中文) at all times, regardless of the input language.
 
 Chat History:
 {chat_history}
 
-User Question: {input}`
+User Question: {input}
+
+Remember: Always respond in Traditional Chinese (繁體中文).`
     );
 
     const chain = RunnableSequence.from([

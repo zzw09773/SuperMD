@@ -8,12 +8,19 @@ interface FileUploadModalProps {
   onUploadSuccess: () => void;
 }
 
+interface UploadResult {
+  fileName: string;
+  status: 'success' | 'error';
+  error?: string;
+}
+
 const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalProps) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [uploadResults, setUploadResults] = useState<UploadResult[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allowedTypes = [
@@ -69,57 +76,83 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
     e.preventDefault();
     setIsDragging(false);
 
-    const files = e.dataTransfer.files;
+    const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      handleFileSelect(files[0]);
+      handleFileSelect(files);
     }
   };
 
-  const handleFileSelect = (file: File) => {
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  const handleFileSelect = (files: File[]) => {
+    const validFiles: File[] = [];
+    const errors: string[] = [];
 
-    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(ext)) {
-      setErrorMessage('不支援的檔案格式。支援文件 (PDF, DOCX, TXT, MD)、圖片 (PNG, JPG等)、表格 (CSV, XLSX) 和程式碼檔案。');
-      setUploadStatus('error');
-      return;
+    for (const file of files) {
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(ext)) {
+        errors.push(`${file.name}: 不支援的檔案格式`);
+        continue;
+      }
+
+      if (file.size > 50 * 1024 * 1024) {
+        errors.push(`${file.name}: 檔案大小不能超過 50MB`);
+        continue;
+      }
+
+      validFiles.push(file);
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      setErrorMessage('檔案大小不能超過 20MB');
+    if (errors.length > 0) {
+      setErrorMessage(errors.join('\n'));
       setUploadStatus('error');
-      return;
+    } else {
+      setUploadStatus('idle');
+      setErrorMessage('');
     }
 
-    setSelectedFile(file);
-    setUploadStatus('idle');
-    setErrorMessage('');
+    setSelectedFiles(validFiles);
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setUploading(true);
     setUploadStatus('idle');
+    setUploadResults([]);
 
     const formData = new FormData();
-    formData.append('file', selectedFile);
+
+    // Append all files to FormData
+    selectedFiles.forEach(file => {
+      formData.append('files', file);
+    });
 
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:3000/api/rag/upload', formData, {
+      const response = await axios.post('http://localhost:3000/api/rag/upload-batch', formData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
       });
 
-      setUploadStatus('success');
-      setSelectedFile(null);
+      setUploadResults(response.data.results);
+
+      if (response.data.errorCount === 0) {
+        setUploadStatus('success');
+      } else if (response.data.successCount === 0) {
+        setUploadStatus('error');
+        setErrorMessage('所有文件上傳失敗');
+      } else {
+        setUploadStatus('success');
+      }
+
+      setSelectedFiles([]);
 
       setTimeout(() => {
         onUploadSuccess();
         onClose();
-      }, 1500);
+      }, 2000);
     } catch (error) {
       console.error('Upload error:', error);
       setUploadStatus('error');
@@ -132,10 +165,15 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
   };
 
   const reset = () => {
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setUploadStatus('idle');
     setErrorMessage('');
+    setUploadResults([]);
     setIsDragging(false);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
   };
 
   if (!isOpen) return null;
@@ -166,7 +204,7 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {!selectedFile ? (
+          {selectedFiles.length === 0 ? (
             <>
               <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
               <p className="text-gray-600 dark:text-gray-300 mb-2">
@@ -181,46 +219,79 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 className="hidden"
                 accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp,.csv,.xls,.xlsx,.js,.ts,.jsx,.tsx,.py,.java,.cpp,.c,.cs,.go,.rs,.rb,.php,.swift,.kt,.sql,.html,.css,.json,.xml,.yaml,.yml"
-                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) handleFileSelect(files);
+                }}
                 aria-label="選擇文件"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
-                支援格式: 文件 (PDF, DOCX, TXT, MD)、圖片 (PNG, JPG等)、表格 (CSV, XLSX)、程式碼 (最大 20MB)
+                支援格式: 文件 (PDF, DOCX, TXT, MD)、圖片 (PNG, JPG等)、表格 (CSV, XLSX)、程式碼 (最大 50MB)<br />
+                可一次選擇多個文件批量上傳 (最多 20 個)
               </p>
             </>
           ) : (
-            <div className="space-y-4">
-              <File className="w-12 h-12 mx-auto text-blue-500" />
-              <div>
-                <p className="font-medium text-gray-800 dark:text-white">{selectedFile.name}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {(selectedFile.size / 1024).toFixed(2)} KB
-                </p>
-              </div>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {selectedFiles.map((file, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <File className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-800 dark:text-white truncate text-sm">{file.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {(file.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => removeFile(index)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
               <button
-                onClick={reset}
-                className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
               >
-                選擇其他文件
+                + 添加更多文件
               </button>
             </div>
           )}
         </div>
 
         {/* Status Messages */}
-        {uploadStatus === 'success' && (
-          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-            <span className="text-green-700 dark:text-green-300">上傳成功！正在建立向量索引...</span>
+        {uploadStatus === 'success' && uploadResults.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+              <span className="text-green-700 dark:text-green-300">
+                上傳完成！{uploadResults.filter(r => r.status === 'success').length} 個成功
+                {uploadResults.filter(r => r.status === 'error').length > 0 &&
+                  `, ${uploadResults.filter(r => r.status === 'error').length} 個失敗`
+                }
+              </span>
+            </div>
+            {uploadResults.some(r => r.status === 'error') && (
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {uploadResults.filter(r => r.status === 'error').map((result, i) => (
+                  <div key={i} className="text-xs text-red-600 dark:text-red-400">
+                    ❌ {result.fileName}: {result.error}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {uploadStatus === 'error' && (
+        {uploadStatus === 'error' && uploadResults.length === 0 && (
           <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-            <span className="text-red-700 dark:text-red-300">{errorMessage}</span>
+            <span className="text-red-700 dark:text-red-300 whitespace-pre-wrap">{errorMessage}</span>
           </div>
         )}
 
@@ -234,10 +305,13 @@ const FileUploadModal = ({ isOpen, onClose, onUploadSuccess }: FileUploadModalPr
           </button>
           <button
             onClick={handleUpload}
-            disabled={!selectedFile || uploading}
+            disabled={selectedFiles.length === 0 || uploading}
             className="flex-1 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {uploading ? '上傳中...' : '上傳並索引'}
+            {uploading
+              ? `上傳中... (${selectedFiles.length} 個文件)`
+              : `上傳並索引${selectedFiles.length > 0 ? ` (${selectedFiles.length} 個文件)` : ''}`
+            }
           </button>
         </div>
       </div>

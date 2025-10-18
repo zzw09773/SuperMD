@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Folder, FolderPlus, File, ChevronRight, ChevronDown, Edit2, Trash2, X, Check, Plus } from 'lucide-react';
+import { Folder, FolderPlus, File, ChevronRight, ChevronDown, Edit2, Trash2, X, Check, Plus, RefreshCw } from 'lucide-react';
 import { projectAPI, documentAPI, type Project as APIProject, type Document as APIDocument } from '../../services/api';
 
 interface Document extends APIDocument {
@@ -14,6 +14,7 @@ interface ProjectSidebarProps {
   currentDocumentId: string | null;
   onDocumentSelect: (id: string | null) => void;
   onDocumentCreate?: (doc: Document) => void;
+  currentDocumentContent?: string;
 }
 
 // Extract first # heading from markdown content
@@ -26,6 +27,7 @@ const ProjectSidebar = ({
   currentDocumentId,
   onDocumentSelect,
   onDocumentCreate,
+  currentDocumentContent,
 }: ProjectSidebarProps) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [ungroupedDocs, setUngroupedDocs] = useState<Document[]>([]);
@@ -47,13 +49,25 @@ const ProjectSidebar = ({
         documentAPI.getAll(),
       ]);
 
+      // Preserve existing titles and content from local state
+      const allLocalDocs = [...projects.flatMap(p => p.documents), ...ungroupedDocs];
+      const preservedDocs = documentsData.map(backendDoc => {
+        const localDoc = allLocalDocs.find(d => d.id === backendDoc.id);
+        return {
+          ...backendDoc,
+          // Preserve title and content from local state if available
+          title: localDoc?.title || backendDoc.title,
+          content: localDoc?.content || backendDoc.content,
+        };
+      });
+
       // Organize documents into projects and ungrouped
       const projectsWithDocs: Project[] = projectsData.map(project => ({
         ...project,
-        documents: documentsData.filter(doc => doc.projectId === project.id),
+        documents: preservedDocs.filter(doc => doc.projectId === project.id),
       }));
 
-      const ungrouped = documentsData.filter(doc => !doc.projectId);
+      const ungrouped = preservedDocs.filter(doc => !doc.projectId);
 
       setProjects(projectsWithDocs);
       setUngroupedDocs(ungrouped);
@@ -259,9 +273,37 @@ const ProjectSidebar = ({
 
   // Update document title when content changes
   useEffect(() => {
-    // This will be called by parent component when markdown changes
-    // For now, we'll update it through props
-  }, []);
+    if (!currentDocumentId || !currentDocumentContent) return;
+
+    const newTitle = extractTitle(currentDocumentContent);
+
+    // Update the displayed title in local state immediately
+    setProjects(prevProjects =>
+      prevProjects.map(p => ({
+        ...p,
+        documents: p.documents.map(d =>
+          d.id === currentDocumentId ? { ...d, title: newTitle, content: currentDocumentContent } : d
+        ),
+      }))
+    );
+
+    setUngroupedDocs(prevDocs =>
+      prevDocs.map(d =>
+        d.id === currentDocumentId ? { ...d, title: newTitle, content: currentDocumentContent } : d
+      )
+    );
+
+    // Debounce the backend update to avoid too many requests
+    const timeoutId = setTimeout(async () => {
+      try {
+        await documentAPI.update(currentDocumentId, { title: newTitle });
+      } catch (error) {
+        console.error('Failed to update document title:', error);
+      }
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [currentDocumentId, currentDocumentContent]);
 
   if (loading) {
     return (
@@ -295,13 +337,23 @@ const ProjectSidebar = ({
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">專案</h3>
-            <button
-              onClick={addNewProject}
-              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-              title="新增專案"
-            >
-              <FolderPlus className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </button>
+            <div className="flex gap-1">
+              <button
+                onClick={loadData}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                title="重新整理"
+                disabled={loading}
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-600 dark:text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={addNewProject}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                title="新增專案"
+              >
+                <FolderPlus className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
           </div>
 
           {/* Project List */}
@@ -394,7 +446,7 @@ const ProjectSidebar = ({
                       }`}
                     >
                       <File className="w-3 h-3" />
-                      <span className="flex-1 text-sm truncate">{extractTitle(doc.content)}</span>
+                      <span className="flex-1 text-sm truncate">{doc.title}</span>
                       <button
                         onClick={(e) => deleteDocument(doc.id, e)}
                         className="opacity-0 group-hover/doc:opacity-100 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
@@ -438,7 +490,7 @@ const ProjectSidebar = ({
                 }`}
               >
                 <File className="w-3 h-3" />
-                <span className="flex-1 text-sm truncate">{extractTitle(doc.content)}</span>
+                <span className="flex-1 text-sm truncate">{doc.title}</span>
                 <button
                   onClick={(e) => deleteDocument(doc.id, e)}
                   className="opacity-0 group-hover/doc:opacity-100 p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"

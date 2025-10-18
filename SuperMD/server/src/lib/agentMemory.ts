@@ -270,7 +270,7 @@ const summarizeBatch = async (
   const llmConfig = requireLLMConfig('AgentMemory');
   const llm = new ChatOpenAI({
     modelName: llmConfig.modelName,
-    temperature: 0,
+    temperature: 1, // GPT-5 only supports temperature=1
     configuration: {
       apiKey: llmConfig.apiKey,
       baseURL: llmConfig.baseURL,

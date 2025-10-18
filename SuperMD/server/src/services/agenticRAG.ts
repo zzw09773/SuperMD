@@ -2,7 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { StateGraph, Annotation, END } from '@langchain/langgraph';
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import { DynamicTool } from '@langchain/core/tools';
-import { searchSimilarDocuments } from './ragService';
+import { searchSimilarDocuments, getUserDocuments } from './ragService';
 import {
   appendAgentMemory,
   collectConversationContext,
@@ -60,6 +60,10 @@ const AgentState = Annotation.Root({
   shouldRetrieve: Annotation<boolean>({
     reducer: (_, update) => update,
     default: () => true,
+  }),
+  shouldListDocuments: Annotation<boolean>({
+    reducer: (_, update) => update,
+    default: () => false,
   }),
   answer: Annotation<string>({
     reducer: (_, update) => update,
@@ -121,18 +125,25 @@ ${contextLines.join('\n')}
 `
           : '';
 
-        const prompt = `${contextBlock}You are a query optimization expert. Rewrite the following user query so it works well for semantic search across the user's documents.
+        const prompt = `${contextBlock}You are a query optimization expert. Extract the core keywords from the user's query for better semantic search.
 
 Original Query: "${query}"
 
 Rules:
-1. Resolve pronouns or vague references (e.g., "剛剛", "那個文件", "it") using the conversation context when provided.
-2. Extract key concepts and keywords.
-3. Remove conversational fluff (e.g., "can you help me", "I want to know").
-4. Make it specific and focused.
-5. Keep it concise (1-2 sentences) and in the same language as the original query.
+1. Extract ONLY the main keywords and concepts (3-5 keywords maximum)
+2. Remove conversational words (e.g., "請幫我", "如何", "can you", "how to")
+3. Keep technical terms and specific nouns
+4. Use the same language as the original query
+5. Separate keywords with spaces, NO explanations or descriptions
 
-Rewritten Query:`;
+Example:
+Input: "平面向量如何表示"
+Output: "平面向量 表示法"
+
+Input: "請告訴我對數函數的定義"
+Output: "對數函數 定義"
+
+Keywords:`;
 
         const response = await llm.invoke([new HumanMessage(prompt)]);
         const rewrittenQuery = response.content.toString().trim();
@@ -187,7 +198,52 @@ ${result.content}
 };
 
 /**
- * Tool 3: Relevance Evaluator
+ * Tool 3: Document List
+ * 列出用戶知識庫中的所有文件
+ */
+const createDocumentListTool = (userId: string) => {
+  return new DynamicTool({
+    name: 'list_documents',
+    description: `Lists all documents currently in the user's knowledge base.
+    Use this when the user asks what documents/files/knowledge they have uploaded,
+    or asks about the contents/overview of their knowledge base.
+    Input: empty string (no input needed)
+    Output: formatted list of all documents with metadata`,
+    func: async () => {
+      try {
+        console.log(`📋 [Document List] Fetching all documents for user: ${userId}`);
+
+        const documents = await getUserDocuments(userId);
+
+        if (documents.length === 0) {
+          return 'The knowledge base is currently empty. No documents have been uploaded yet.';
+        }
+
+        // Format the document list
+        const formattedList = documents
+          .map((doc, idx) => {
+            const sizeMB = (doc.fileSize / (1024 * 1024)).toFixed(2);
+            const date = new Date(doc.createdAt).toLocaleDateString('zh-TW');
+            return `${idx + 1}. **${doc.fileName}**
+   - 檔案類型: ${doc.fileType}
+   - 大小: ${sizeMB} MB
+   - 分塊數: ${doc.chunkCount} 個
+   - 上傳時間: ${date}`;
+          })
+          .join('\n\n');
+
+        console.log(`✅ [Document List] Found ${documents.length} documents`);
+        return `知識庫包含以下 ${documents.length} 個文件:\n\n${formattedList}`;
+      } catch (error) {
+        console.error('[Document List] Error:', error);
+        return 'Error retrieving document list: ' + (error instanceof Error ? error.message : 'Unknown error');
+      }
+    },
+  });
+};
+
+/**
+ * Tool 4: Relevance Evaluator
  * 評估檢索結果是否足夠回答問題
  */
 const createRelevanceEvaluatorTool = (llm: ChatOpenAI) => {
@@ -237,28 +293,45 @@ SUFFICIENT: [reason] OR INSUFFICIENT: [reason]`;
 // ============================================================
 
 /**
- * Node 1: Router - 決定是否需要改寫查詢
+ * Node 1: Router - 決定是否需要改寫查詢或列出文件
  */
 const routerNode = async (state: AgentStateType): Promise<Partial<AgentStateType>> => {
   console.log('\n🔀 [Router Node] Analyzing query...');
 
   const { query } = state;
 
-  // 簡單規則：如果查詢太短或太口語化，則改寫
-  const needsRewrite = query.length < 10 ||
-                      query.toLowerCase().includes('請幫我') ||
-                      query.toLowerCase().includes('can you') ||
-                      query.toLowerCase().includes('我想知道');
+  // 檢測是否是「列出文件/知識點」類的查詢
+  const isListQuery =
+    query.includes('有哪些') ||
+    query.includes('包含哪些') ||
+    query.includes('列出') ||
+    query.includes('所有文件') ||
+    query.includes('所有知識') ||
+    query.includes('知識庫內容') ||
+    query.toLowerCase().includes('what documents') ||
+    query.toLowerCase().includes('list all');
 
+  if (isListQuery) {
+    const step = {
+      type: 'reasoning',
+      content: '📋 檢測到文件列表查詢，將列出知識庫所有文件',
+    };
+    return {
+      shouldListDocuments: true,
+      shouldRetrieve: false,
+      steps: [step],
+    };
+  }
+
+  // 先直接檢索，不預先判斷是否需要改寫
   const step = {
     type: 'reasoning',
-    content: needsRewrite
-      ? '🤔 查詢需要優化以提高檢索效果'
-      : '✅ 查詢已足夠明確，直接檢索',
+    content: '🔍 開始搜尋知識庫...',
   };
 
   return {
-    shouldRetrieve: needsRewrite,
+    shouldRetrieve: false, // 先不改寫，直接檢索
+    shouldListDocuments: false,
     steps: [step],
   };
 };
@@ -340,7 +413,31 @@ const evaluatorNode = async (
 };
 
 /**
- * Node 5: Generator - 生成最終答案
+ * Node 5: Document Lister - 列出所有文件
+ */
+const documentListerNode = async (
+  state: AgentStateType,
+  tools: { documentList: DynamicTool }
+): Promise<Partial<AgentStateType>> => {
+  console.log('\n📋 [Document Lister Node] Listing all documents...');
+
+  const documentList = await tools.documentList.func('');
+
+  const step = {
+    type: 'tool_call',
+    content: '📋 已列出知識庫所有文件',
+  };
+
+  return {
+    ragResults: documentList,
+    answer: documentList,
+    steps: [step],
+    messages: [new AIMessage(documentList)],
+  };
+};
+
+/**
+ * Node 6: Generator - 生成最終答案
  */
 const generatorNode = async (
   state: AgentStateType,
@@ -350,7 +447,9 @@ const generatorNode = async (
 
   const { query, ragResults } = state;
 
-  const prompt = `You are a helpful AI assistant. Use the following information from the user's knowledge base to answer their question.
+  const prompt = `IMPORTANT: You MUST respond in Traditional Chinese (繁體中文, zh-TW) ONLY.
+
+You are a helpful AI assistant. Use the following information from the user's knowledge base to answer their question in Traditional Chinese.
 
 Knowledge Base Results:
 ${ragResults}
@@ -358,14 +457,14 @@ ${ragResults}
 User Question: ${query}
 
 Instructions:
-1. Answer the question based ONLY on the information provided above
-2. If the information is not sufficient, say so clearly
-3. Always cite which source you used (e.g., "根據 Source 1...")
-4. Be concise and accurate
-5. Use Traditional Chinese (繁體中文) if the question is in Chinese, otherwise use English
+1. Answer in Traditional Chinese (繁體中文) ONLY
+2. Answer the question based ONLY on the information provided above
+3. If the information is not sufficient, say so clearly in Traditional Chinese
+4. Always cite which source you used (e.g., "根據 Source 1...")
+5. Be concise and accurate
 6. Format your answer in Markdown for better readability
 
-Answer:`;
+Answer (in Traditional Chinese 繁體中文):`;
 
   const response = await llm.invoke([new HumanMessage(prompt)]);
   const answer = response.content.toString();
@@ -397,7 +496,7 @@ export const createAgenticRAG = (
   const llmConfig = requireLLMConfig('AgenticRAG');
   const llm = new ChatOpenAI({
     modelName: llmConfig.modelName,
-    temperature: 0.7,
+    temperature: 1, // GPT-5 only supports temperature=1
     configuration: {
       apiKey: llmConfig.apiKey,
       baseURL: llmConfig.baseURL,
@@ -408,6 +507,7 @@ export const createAgenticRAG = (
   const tools = {
     queryRewriter: createQueryRewriterTool(llm, contextLoader),
     kbSearch: createKnowledgeBaseSearchTool(userId),
+    documentList: createDocumentListTool(userId),
     relevanceEval: createRelevanceEvaluatorTool(llm),
   };
 
@@ -418,6 +518,7 @@ export const createAgenticRAG = (
     .addNode('rewriter', (state: AgentStateType) => queryRewriterNode(state, tools))
     .addNode('retriever', (state: AgentStateType) => retrieverNode(state, tools))
     .addNode('evaluator', (state: AgentStateType) => evaluatorNode(state, tools))
+    .addNode('documentLister', (state: AgentStateType) => documentListerNode(state, tools))
     .addNode('generator', (state: AgentStateType) => generatorNode(state, llm))
 
     // Define edges (workflow logic)
@@ -425,25 +526,34 @@ export const createAgenticRAG = (
     .addConditionalEdges(
       'router',
       (state: AgentStateType) => {
-        // 如果查詢需要改寫，去 rewriter，否則直接檢索
-        return state.shouldRetrieve ? 'rewriter' : 'retriever';
+        // 如果是列出文件查詢，直接列出
+        if (state.shouldListDocuments) {
+          return 'documentLister';
+        }
+        // 其他所有查詢都先直接檢索
+        return 'retriever';
       },
       {
-        rewriter: 'rewriter',
+        documentLister: 'documentLister',
         retriever: 'retriever',
       }
     )
+    .addEdge('documentLister', END)
     .addEdge('rewriter', 'retriever')
     .addEdge('retriever', 'evaluator')
     .addConditionalEdges(
       'evaluator',
       (state: AgentStateType) => {
-        // 如果結果不足，重新改寫查詢；否則生成答案
-        if (state.shouldRetrieve && state.rewrittenQuery) {
-          // 已經改寫過一次了，直接生成答案避免無限循環
+        // 如果已經改寫過了，不再重試，直接生成答案
+        if (state.rewrittenQuery) {
           return 'generator';
         }
-        return state.shouldRetrieve ? 'rewriter' : 'generator';
+        // 如果結果不足且還沒改寫過，嘗試改寫查詢
+        if (state.shouldRetrieve) {
+          return 'rewriter';
+        }
+        // 結果充足，生成答案
+        return 'generator';
       },
       {
         rewriter: 'rewriter',

@@ -218,26 +218,47 @@ const useChat = (documentId?: string) => {
           setIsLoading(false);
         };
       } else {
-        // Use Chat API
-        const response = await axios.post('http://localhost:3000/api/chat', {
-          messages: [...messages, userMessage].map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-          stream: false,
+        // Use Chat API - get current messages from state
+        setMessages(prevMessages => {
+          const allMessages = [...prevMessages, userMessage];
+
+          // Make API call with current messages
+          axios.post('http://localhost:3000/api/chat', {
+            messages: allMessages.map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+            stream: false,
+          })
+          .then(response => {
+            const assistantMessage: ChatMessage = {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              content: response.data.message,
+              timestamp: new Date(),
+              sources: response.data.sources,
+            };
+
+            setMessages(prev => [...prev, assistantMessage]);
+            saveChatMessage(assistantMessage, mode);
+            setIsLoading(false);
+          })
+          .catch(error => {
+            console.error('Chat error:', error);
+            setMessages(prev => [
+              ...prev,
+              {
+                id: `error-${Date.now()}`,
+                role: 'assistant',
+                content: 'Sorry, I encountered an error. Please try again.',
+                timestamp: new Date(),
+              },
+            ]);
+            setIsLoading(false);
+          });
+
+          return prevMessages;
         });
-
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: response.data.message,
-          timestamp: new Date(),
-          sources: response.data.sources,
-        };
-
-        setMessages(prev => [...prev, assistantMessage]);
-        await saveChatMessage(assistantMessage, mode);
-        setIsLoading(false);
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -252,7 +273,7 @@ const useChat = (documentId?: string) => {
       ]);
       setIsLoading(false);
     }
-  }, [messages, saveChatMessage]);
+  }, [saveChatMessage]);
 
   const clearHistory = useCallback(async () => {
     if (!documentId) return;

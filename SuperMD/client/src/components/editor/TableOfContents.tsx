@@ -16,14 +16,18 @@ const TableOfContents = ({ content }: TableOfContentsProps) => {
   useEffect(() => {
     const headings: TocItem[] = [];
     const lines = content.split('\n');
+    let headingIndex = 0;
 
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       const match = line.match(/^(#{1,6})\s+(.+)$/);
       if (match) {
         const level = match[1].length;
         const text = match[2].trim();
-        const id = `heading-${index}-${text.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-')}`;
+        // Generate ID matching PreviewPane's logic
+        const cleanText = text.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-');
+        const id = `heading-${headingIndex}-${cleanText}`;
         headings.push({ id, text, level });
+        headingIndex++;
       }
     });
 
@@ -41,7 +45,18 @@ const TableOfContents = ({ content }: TableOfContentsProps) => {
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Scroll the preview pane container
+      const previewPane = element.closest('.overflow-y-auto');
+      if (previewPane) {
+        const elementTop = element.offsetTop;
+        previewPane.scrollTo({
+          top: elementTop - 20, // 20px offset for better visibility
+          behavior: 'smooth'
+        });
+      } else {
+        // Fallback to default behavior
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   };
 
