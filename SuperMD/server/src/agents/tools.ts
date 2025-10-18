@@ -3,6 +3,9 @@ import { z } from 'zod';
 import axios from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
 
+type WritingTask = 'improve' | 'grammar' | 'simplify' | 'formal' | 'casual';
+type SummaryLength = 'short' | 'medium' | 'long';
+
 /**
  * Tool: Wikipedia Search
  * Searches Wikipedia for encyclopedic information
@@ -13,7 +16,8 @@ export const wikipediaSearchTool = new DynamicStructuredTool({
   schema: z.object({
     query: z.string().describe('The topic to search on Wikipedia'),
   }),
-  func: async ({ query }) => {
+  func: async (input) => {
+    const { query } = input as { query: string };
     try {
       console.log(`[Wikipedia] Searching for: "${query}"`);
 
@@ -59,7 +63,8 @@ export const arxivSearchTool = new DynamicStructuredTool({
   schema: z.object({
     query: z.string().describe('The research topic to search for'),
   }),
-  func: async ({ query }) => {
+  func: async (input) => {
+    const { query } = input as { query: string };
     try {
       console.log(`[arXiv] Searching for: "${query}"`);
 
@@ -117,7 +122,8 @@ export const stackOverflowSearchTool = new DynamicStructuredTool({
   schema: z.object({
     query: z.string().describe('The programming question or problem to search for'),
   }),
-  func: async ({ query }) => {
+  func: async (input) => {
+    const { query } = input as { query: string };
     try {
       console.log(`[Stack Overflow] Searching for: "${query}"`);
 
@@ -163,7 +169,8 @@ export const githubSearchTool = new DynamicStructuredTool({
   schema: z.object({
     query: z.string().describe('The repository name, programming language, or code to search for'),
   }),
-  func: async ({ query }) => {
+  func: async (input) => {
+    const { query } = input as { query: string };
     try {
       console.log(`[GitHub] Searching for: "${query}"`);
 
@@ -225,12 +232,13 @@ export const writingAssistantTool = new DynamicStructuredTool({
     text: z.string().describe('The text to improve'),
     task: z.enum(['improve', 'grammar', 'simplify', 'formal', 'casual']).describe('The improvement task'),
   }),
-  func: async ({ text, task }) => {
+  func: async (input) => {
+    const { text, task } = input as { text: string; task: WritingTask };
     try {
       console.log(`[Writing Assistant] Task: ${task}`);
 
       const llm = getLLM();
-      const prompts: Record<string, string> = {
+      const prompts: Record<WritingTask, string> = {
         improve: `Improve the following text by enhancing clarity, flow, and overall quality:\n\n${text}`,
         grammar: `Fix all grammar, spelling, and punctuation errors in the following text:\n\n${text}`,
         simplify: `Simplify the following text to make it easier to understand:\n\n${text}`,
@@ -260,7 +268,8 @@ export const translationTool = new DynamicStructuredTool({
     text: z.string().describe('The text to translate'),
     targetLang: z.string().describe('Target language (e.g., "Chinese", "English", "Japanese")'),
   }),
-  func: async ({ text, targetLang }) => {
+  func: async (input) => {
+    const { text, targetLang } = input as { text: string; targetLang: string };
     try {
       console.log(`[Translation] Translating to ${targetLang}`);
 
@@ -289,12 +298,13 @@ export const summarizationTool = new DynamicStructuredTool({
     text: z.string().describe('The text to summarize'),
     length: z.enum(['short', 'medium', 'long']).describe('Desired summary length'),
   }),
-  func: async ({ text, length }) => {
+  func: async (input) => {
+    const { text, length } = input as { text: string; length: SummaryLength };
     try {
       console.log(`[Summarization] Length: ${length}`);
 
       const llm = getLLM();
-      const lengthInstructions: Record<string, string> = {
+      const lengthInstructions: Record<SummaryLength, string> = {
         short: 'in 2-3 sentences',
         medium: 'in 1 paragraph (4-6 sentences)',
         long: 'in 2-3 paragraphs with key points',
@@ -324,7 +334,8 @@ export const codeExplanationTool = new DynamicStructuredTool({
     code: z.string().describe('The code snippet to explain'),
     language: z.string().optional().describe('Programming language (optional)'),
   }),
-  func: async ({ code, language }) => {
+  func: async (input) => {
+    const { code, language } = input as { code: string; language?: string };
     try {
       console.log(`[Code Explanation] Language: ${language || 'auto-detect'}`);
 

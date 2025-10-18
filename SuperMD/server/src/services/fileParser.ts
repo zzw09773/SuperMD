@@ -1,10 +1,14 @@
-import pdf from 'pdf-parse';
+import pdfParseModule from 'pdf-parse';
 import mammoth from 'mammoth';
 import fs from 'fs/promises';
 import Tesseract from 'tesseract.js';
 import sharp from 'sharp';
 import { parse as csvParse } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
+
+type PdfParseFn = (data: Buffer) => Promise<{ text: string; numpages: number }>;
+
+const pdfParse = (pdfParseModule as unknown as { default?: PdfParseFn }).default ?? (pdfParseModule as unknown as PdfParseFn);
 
 export interface ParsedDocument {
   content: string;
@@ -24,7 +28,7 @@ export interface ParsedDocument {
 export const parsePDF = async (filePath: string): Promise<ParsedDocument> => {
   try {
     const dataBuffer = await fs.readFile(filePath);
-    const data = await pdf(dataBuffer);
+    const data = await pdfParse(dataBuffer);
 
     return {
       content: data.text,
@@ -142,14 +146,14 @@ export const parseImage = async (filePath: string): Promise<ParsedDocument> => {
 export const parseCSV = async (filePath: string): Promise<ParsedDocument> => {
   try {
     const fileContent = await fs.readFile(filePath, 'utf-8');
-    const records = csvParse(fileContent, {
+    const records = csvParse<Record<string, string>>(fileContent, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
     });
 
     // Convert CSV to readable text format
-    const headers = Object.keys(records[0] || {});
+    const headers = Object.keys(records[0] ?? {});
     let content = `CSV Table with ${records.length} rows and ${headers.length} columns:\n\n`;
     content += `Headers: ${headers.join(', ')}\n\n`;
 
@@ -186,19 +190,20 @@ export const parseExcel = async (filePath: string): Promise<ParsedDocument> => {
 
     workbook.SheetNames.forEach((sheetName, sheetIndex) => {
       const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
 
       content += `=== Sheet ${sheetIndex + 1}: ${sheetName} ===\n`;
       content += `Rows: ${jsonData.length}\n\n`;
 
       if (jsonData.length > 0) {
-        const headers = Object.keys(jsonData[0]);
+        const headers = Object.keys(jsonData[0] ?? {});
         content += `Columns: ${headers.join(', ')}\n\n`;
 
-        jsonData.slice(0, 100).forEach((row: any, index) => {
+        jsonData.slice(0, 100).forEach((row, index) => {
           content += `Row ${index + 1}:\n`;
           headers.forEach(header => {
-            content += `  - ${header}: ${row[header]}\n`;
+            const value = row[header];
+            content += `  - ${header}: ${value ?? ''}\n`;
           });
           content += '\n';
         });

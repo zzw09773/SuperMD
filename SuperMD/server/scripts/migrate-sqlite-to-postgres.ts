@@ -46,9 +46,9 @@ async function migrate() {
     // Run as a single transaction on Postgres side
     await postgresClient.$transaction(async (tx) => {
       console.log('🧹 Cleaning target database (TRUNCATE)');
-      await tx.$executeRawUnsafe('
+      await tx.$executeRawUnsafe(`
         TRUNCATE TABLE "ChatMessage", "Version", "DocumentPermission", "Document", "Project", "Folder", "User" RESTART IDENTITY CASCADE;
-      ');
+      `);
 
       if (users.length) {
         console.log('➡️  Seeding users');

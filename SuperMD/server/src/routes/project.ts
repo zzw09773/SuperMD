@@ -10,6 +10,12 @@ import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
 
+type RequestWithUser = Request & { user: { userId: string } };
+
+function hasUser(req: Request): req is RequestWithUser {
+  return typeof (req as RequestWithUser).user?.userId === 'string';
+}
+
 // All project routes require authentication
 router.use(authMiddleware);
 
@@ -18,6 +24,10 @@ router.use(authMiddleware);
  */
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const projects = await getUserProjects(userId);
     res.json({ projects });
@@ -35,6 +45,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const project = await getProjectById(id, userId);
     res.json({ project });
@@ -52,6 +66,10 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description, color } = req.body;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     if (!name) {
@@ -84,6 +102,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const { name, description, color, isExpanded } = req.body;
 
@@ -112,6 +134,10 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
 router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     const result = await deleteProject(id, userId);

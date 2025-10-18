@@ -169,13 +169,15 @@ router.get('/search', async (req: Request, res: Response) => {
       return;
     }
 
+    const query = (q as string).trim();
+
     const documents = await prisma.document.findMany({
       where: {
         userId: userId as string,
         OR: [
-          { title: { contains: q as string, mode: 'insensitive' } },
-          { content: { contains: q as string, mode: 'insensitive' } },
-          { tags: { contains: q as string, mode: 'insensitive' } },
+          { title: { contains: query } },
+          { content: { contains: query } },
+          { tags: { contains: query } },
         ],
       },
       include: {

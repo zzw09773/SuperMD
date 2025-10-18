@@ -14,7 +14,6 @@ interface ProjectSidebarProps {
   currentDocumentId: string | null;
   onDocumentSelect: (id: string | null) => void;
   onDocumentCreate?: (doc: Document) => void;
-  onDocumentUpdate?: (docId: string, title: string) => void;
 }
 
 // Extract first # heading from markdown content
@@ -27,7 +26,6 @@ const ProjectSidebar = ({
   currentDocumentId,
   onDocumentSelect,
   onDocumentCreate,
-  onDocumentUpdate
 }: ProjectSidebarProps) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [ungroupedDocs, setUngroupedDocs] = useState<Document[]>([]);
@@ -97,8 +95,6 @@ const ProjectSidebar = ({
 
   const handleDropOnProject = async (projectId: string) => {
     if (!draggedDoc) return;
-
-    const oldProjectId = draggedDoc.projectId;
 
     // Optimistic update
     setUngroupedDocs(ungroupedDocs.filter(d => d.id !== draggedDoc.id));

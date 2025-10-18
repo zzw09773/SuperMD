@@ -14,6 +14,24 @@ import {
   codeExplanationTool,
 } from './tools';
 
+type ResearchAgentConfig = {
+  documentContent?: string;
+};
+
+const toolDisplayNames: Record<string, string> = {
+  google_search: 'Google 搜尋',
+  wikipedia_search: 'Wikipedia 查詢',
+  arxiv_search: 'arXiv 論文搜尋',
+  stackoverflow_search: 'Stack Overflow 搜尋',
+  github_search: 'GitHub 程式碼搜尋',
+  calculator: '計算器',
+  document_search: '文件內容搜尋',
+  writing_assistant: '寫作助理',
+  translate: '翻譯工具',
+  summarize: '摘要工具',
+  explain_code: '程式碼說明',
+};
+
 // Initialize LLM
 function getLLM() {
   return new ChatOpenAI({
@@ -23,14 +41,47 @@ function getLLM() {
   });
 }
 
+function toText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content.map(item => toText(item)).join('');
+  }
+
+  if (content && typeof content === 'object') {
+    const maybeText = content as { text?: unknown; content?: unknown };
+    if (typeof maybeText.text === 'string') {
+      return maybeText.text;
+    }
+
+    if (typeof maybeText.content === 'string') {
+      return maybeText.content;
+    }
+  }
+
+  if (content === null || content === undefined) {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(content);
+  } catch {
+    return String(content);
+  }
+}
+
 // Tool: Calculator
+const calculatorSchema = z.object({
+  expression: z.string().describe('The mathematical expression to evaluate'),
+});
+
 const calculatorTool = new DynamicStructuredTool({
   name: 'calculator',
   description: 'Performs mathematical calculations. Input should be a mathematical expression.',
-  schema: z.object({
-    expression: z.string().describe('The mathematical expression to evaluate'),
-  }),
-  func: async ({ expression }) => {
+  schema: calculatorSchema,
+  func: async ({ expression }: z.infer<typeof calculatorSchema>) => {
     try {
       // Safe eval using Function constructor
       const result = Function(`'use strict'; return (${expression})`)();
@@ -43,13 +94,15 @@ const calculatorTool = new DynamicStructuredTool({
 
 // Tool: Google Custom Search API (Official)
 function createWebSearchTool() {
+  const webSearchSchema = z.object({
+    query: z.string().describe('The search query to send to Google'),
+  });
+
   return new DynamicStructuredTool({
     name: 'google_search',
     description: 'Searches Google for real-time information. Use this to find current information, news, research papers, documentation, or any web content.',
-    schema: z.object({
-      query: z.string().describe('The search query to send to Google'),
-    }),
-    func: async ({ query }) => {
+    schema: webSearchSchema,
+    func: async ({ query }: z.infer<typeof webSearchSchema>) => {
       const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
       const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -112,13 +165,21 @@ Query: "${query}"`;
 }
 
 // Tool: Document Search
+const documentSearchSchema = z.object({
+  query: z.string().describe('What to search for in the document'),
+});
+
 const documentSearchTool = new DynamicStructuredTool({
   name: 'document_search',
   description: 'Searches through the current document content for relevant information.',
-  schema: z.object({
-    query: z.string().describe('What to search for in the document'),
-  }),
-  func: async ({ query }, { documentContent }) => {
+  schema: documentSearchSchema,
+  func: async (
+    { query }: z.infer<typeof documentSearchSchema>,
+    _runManager?: unknown,
+    config?: { configurable?: ResearchAgentConfig },
+  ) => {
+    const documentContent = config?.configurable?.documentContent;
+
     if (!documentContent) {
       return 'No document content available.';
     }
@@ -185,181 +246,152 @@ interface ResearchResult {
 export async function streamResearchResponse(
   query: string,
   documentContent?: string,
-  onChunk?: (data: any) => void
+  onChunk?: (data: any) => void,
 ): Promise<ResearchResult> {
   try {
     const agent = await createResearchAgent(documentContent);
 
-    console.log('[Research Agent] Starting query:', query);
-
     let fullResponse = '';
     const toolCalls: ToolCall[] = [];
     const sources: string[] = [];
-    let currentToolCalls: any[] = [];
 
-    // Invoke agent with streaming
-    const stream = await agent.stream({
-      messages: [{ role: 'user', content: query }],
-    });
+    const runConfig = documentContent !== undefined
+      ? { configurable: { documentContent } as ResearchAgentConfig }
+      : undefined;
 
-    console.log('[Research Agent] Stream started');
+    const stream = (await agent.stream(
+      {
+        messages: [{ role: 'user', content: query }],
+      },
+      runConfig,
+    )) as AsyncIterable<unknown>;
 
     for await (const chunk of stream) {
-      console.log('[Research Agent] Received chunk:', JSON.stringify(chunk, null, 2));
+      const chunkData = chunk as Record<string, any>;
 
-      // Extract tool calls
-      if (chunk?.agent?.messages) {
-        const lastMessage = chunk.agent.messages[chunk.agent.messages.length - 1];
+      const agentMessages = chunkData?.agent?.messages;
+      if (Array.isArray(agentMessages) && agentMessages.length > 0) {
+        const lastMessage = agentMessages[agentMessages.length - 1] as Record<string, any>;
+        const toolCallsData = Array.isArray(lastMessage?.tool_calls)
+          ? (lastMessage.tool_calls as Array<Record<string, any>>)
+          : [];
 
-        // Check for tool calls
-        if (lastMessage?.tool_calls && lastMessage.tool_calls.length > 0) {
-          currentToolCalls = lastMessage.tool_calls;
+        if (toolCallsData.length > 0) {
+          onChunk?.({
+            type: 'reasoning',
+            content: `?? **AI 推理流程**\n正在評估問題，準備使用 ${toolCallsData.length} 項工具...`,
+          });
 
-          // Notify about reasoning
-          if (onChunk) {
-            onChunk({
+          for (const toolCall of toolCallsData) {
+            const toolName =
+              typeof toolCall?.name === 'string' ? toolCall.name : 'unknown_tool';
+            const toolArgs = (toolCall?.args ?? {}) as Record<string, unknown>;
+            const toolDisplayName = toolDisplayNames[toolName] || toolName;
+
+            onChunk?.({
               type: 'reasoning',
-              content: `🧠 **AI 推理過程：**\n正在分析問題並規劃使用 ${lastMessage.tool_calls.length} 個工具來回答您的問題...`
+              content: `\n?? **即將使用「${toolDisplayName}」**\n參數：${JSON.stringify(toolArgs, null, 2)}`,
             });
-          }
 
-          // Send tool call info with reasoning
-          for (const toolCall of lastMessage.tool_calls) {
-            // Tool name translation map
-            const toolNameMap: Record<string, string> = {
-              'google_search': 'Google 搜尋',
-              'wikipedia_search': 'Wikipedia 查詢',
-              'arxiv_search': 'arXiv 論文搜尋',
-              'stackoverflow_search': 'Stack Overflow 搜尋',
-              'github_search': 'GitHub 代碼搜尋',
-              'calculator': '計算器',
-              'document_search': '文檔搜尋',
-              'writing_assistant': '寫作助手',
-              'translate': '翻譯工具',
-              'summarize': '摘要工具',
-              'explain_code': '程式碼解釋器',
-            };
-
-            const toolDisplayName = toolNameMap[toolCall.name] || toolCall.name;
-
-            if (onChunk) {
-              // Send reasoning about why using this tool
-              onChunk({
-                type: 'reasoning',
-                content: `\n📋 **步驟：使用「${toolDisplayName}」**\n參數：${JSON.stringify(toolCall.args, null, 2)}`
-              });
-
-              onChunk({
-                type: 'tool_call',
-                tool: toolCall.name,
-                args: toolCall.args
-              });
-            }
+            onChunk?.({
+              type: 'tool_call',
+              tool: toolName,
+              args: toolArgs,
+            });
 
             toolCalls.push({
-              tool: toolCall.name,
-              args: toolCall.args
+              tool: toolName,
+              args: toolArgs,
             });
           }
         }
 
-        // Extract final response
-        const content = lastMessage?.content || '';
-        if (content && typeof content === 'string' && !lastMessage?.tool_calls) {
-          // If this is the start of the final response, send a reasoning message
-          if (fullResponse === '' && content.length > 0 && toolCalls.length > 0) {
-            if (onChunk) {
-              onChunk({
-                type: 'reasoning',
-                content: `\n🎯 **正在整合資訊並生成回答...**\n已收集所有必要資訊，現在為您整理答案。`
-              });
-            }
+        const contentText = toText(lastMessage?.content);
+        if (contentText && toolCallsData.length === 0) {
+          if (fullResponse === '' && contentText.length > 0 && toolCalls.length > 0) {
+            onChunk?.({
+              type: 'reasoning',
+              content: `\n?? **整理回應中...**\n已整合所有重要資訊，準備輸出最終答案。`,
+            });
           }
 
-          fullResponse += content;
-          if (onChunk) {
-            onChunk({ type: 'chunk', content });
-          }
+          fullResponse += contentText;
+          onChunk?.({ type: 'chunk', content: contentText });
         }
       }
 
-      // Extract tool results
-      if (chunk?.tools?.messages) {
-        for (const toolMessage of chunk.tools.messages) {
-          const toolName = toolMessage.name;
-          const toolResult = toolMessage.content;
+      const toolMessages = chunkData?.tools?.messages;
+      if (Array.isArray(toolMessages)) {
+        for (const toolMessage of toolMessages as Array<Record<string, any>>) {
+          const toolName =
+            typeof toolMessage?.name === 'string' ? toolMessage.name : 'unknown_tool';
+          const toolResultText = toText(toolMessage?.content);
 
-          // Update tool call with result
-          const toolCallIndex = toolCalls.findIndex(tc => tc.tool === toolName && !tc.result);
+          const toolCallIndex = toolCalls.findIndex(
+            (call) => call.tool === toolName && call.result === undefined,
+          );
           if (toolCallIndex >= 0) {
-            toolCalls[toolCallIndex].result = toolResult;
+            toolCalls[toolCallIndex].result = toolResultText;
           }
 
-          // Extract sources from search results (all tools that return URLs)
-          const toolsWithSources = ['google_search', 'wikipedia_search', 'arxiv_search', 'stackoverflow_search', 'github_search'];
-          if (toolsWithSources.includes(toolName) && toolResult) {
-            const urlMatches = toolResult.match(/🔗 (https?:\/\/[^\s]+)/g);
+          const toolsWithSources = [
+            'google_search',
+            'wikipedia_search',
+            'arxiv_search',
+            'stackoverflow_search',
+            'github_search',
+          ];
+          if (toolsWithSources.includes(toolName) && toolResultText) {
+            const urlMatches = toolResultText.match(/https?:\/\/[^\s)]+/g);
             if (urlMatches) {
-              urlMatches.forEach((match: string) => {
-                const url = match.replace('🔗 ', '');
+              for (const match of urlMatches) {
+                const url = match.replace(/^[?？]{2}\s*/, '');
                 if (!sources.includes(url)) {
                   sources.push(url);
                 }
-              });
+              }
             }
           }
 
-          if (onChunk) {
-            // Tool name translation
-            const toolNameMap: Record<string, string> = {
-              'google_search': 'Google 搜尋',
-              'wikipedia_search': 'Wikipedia 查詢',
-              'arxiv_search': 'arXiv 論文搜尋',
-              'stackoverflow_search': 'Stack Overflow 搜尋',
-              'github_search': 'GitHub 代碼搜尋',
-              'calculator': '計算器',
-              'document_search': '文檔搜尋',
-              'writing_assistant': '寫作助手',
-              'translate': '翻譯工具',
-              'summarize': '摘要工具',
-              'explain_code': '程式碼解釋器',
-            };
+          const toolDisplayName = toolDisplayNames[toolName] || toolName;
 
-            const toolDisplayName = toolNameMap[toolName] || toolName;
+          onChunk?.({
+            type: 'reasoning',
+            content: `\n?? **「${toolDisplayName}」回傳結果**\n${toolResultText}`,
+          });
 
-            // Send reasoning about tool result
-            onChunk({
-              type: 'reasoning',
-              content: `\n✅ **「${toolDisplayName}」執行完成**\n獲得結果，正在整合資訊...`
-            });
+          const summary =
+            toolResultText.length > 200
+              ? `${toolResultText.slice(0, 200)}...`
+              : toolResultText;
 
-            onChunk({
-              type: 'tool_result',
-              tool: toolName,
-              summary: toolResult.substring(0, 200) + (toolResult.length > 200 ? '...' : '')
-            });
-          }
+          onChunk?.({
+            type: 'tool_result',
+            tool: toolName,
+            summary,
+          });
         }
       }
     }
 
-    console.log('[Research Agent] Stream completed. Full response:', fullResponse);
-
-    // If no response from stream, invoke synchronously
     if (!fullResponse) {
-      console.log('[Research Agent] No streaming response, trying invoke...');
-      const result = await agent.invoke({
-        messages: [{ role: 'user', content: query }],
-      });
+      const result = await agent.invoke(
+        {
+          messages: [{ role: 'user', content: query }],
+        },
+        runConfig,
+      );
 
-      console.log('[Research Agent] Invoke result:', JSON.stringify(result, null, 2));
+      const resultData = result as Record<string, any>;
 
-      if (result?.messages && Array.isArray(result.messages)) {
-        const lastMessage = result.messages[result.messages.length - 1];
-        fullResponse = lastMessage?.content || 'No response generated';
-      } else if (result?.output) {
-        fullResponse = result.output;
-      } else {
+      if (Array.isArray(resultData?.messages) && resultData.messages.length > 0) {
+        const lastMessage = resultData.messages[resultData.messages.length - 1];
+        fullResponse = toText((lastMessage as Record<string, any>)?.content ?? lastMessage);
+      } else if (resultData?.output) {
+        fullResponse = toText(resultData.output);
+      }
+
+      if (!fullResponse) {
         fullResponse = 'Research agent did not return a response';
       }
     }
@@ -367,7 +399,7 @@ export async function streamResearchResponse(
     return {
       response: fullResponse,
       toolCalls,
-      sources
+      sources,
     };
   } catch (error) {
     console.error('[Research Agent] Error:', error);

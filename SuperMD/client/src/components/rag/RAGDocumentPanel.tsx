@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Database, Trash2, FileText, Upload as UploadIcon, RefreshCw } from 'lucide-react';
+import { Database, Trash2, Upload as UploadIcon, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import FileUploadModal from './FileUploadModal';
 

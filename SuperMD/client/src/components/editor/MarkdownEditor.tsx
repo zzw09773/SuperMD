@@ -27,12 +27,14 @@ export interface MarkdownEditorRef {
 const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
   ({ documentId, onContentChange }, ref) => {
     const [content, setContent] = useState('# Welcome to SuperMD\n\nStart typing...');
-    const [showPreview, setShowPreview] = useState(true);
     const [showToc, setShowToc] = useState(false);
     const [previewMode, setPreviewMode] = useState<'split' | 'preview-only' | 'editor-only'>('split');
     const [loading, setLoading] = useState(false);
     const { saveStatus, triggerSave } = useAutoSave(documentId, content);
     const { users, isConnected } = useCollaboration(documentId || 'demo');
+
+    const showEditorPane = previewMode !== 'preview-only';
+    const showPreviewPane = previewMode !== 'editor-only';
 
     useImperativeHandle(ref, () => ({
       getContent: () => content,
@@ -74,7 +76,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
       triggerSave();
     };
 
-    const handleInsert = (text: string, offset: number = 0) => {
+    const handleInsert = (text: string, _offset: number = 0) => {
       // Insert text at current cursor position
       // This is a simplified version - in real implementation would use CodeMirror API
       setContent(content + '\n' + text);
@@ -125,15 +127,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     return (
       <div className="flex h-full min-h-0 flex-col">
         <EditorToolbar
-          showPreview={showPreview}
           showToc={showToc}
           previewMode={previewMode}
-          onTogglePreview={() => setShowPreview(!showPreview)}
           onToggleToc={() => setShowToc(!showToc)}
           onPreviewModeChange={setPreviewMode}
           onInsert={handleInsert}
         />
 
+        {loading && (
+          <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+            Loading document...
+          </div>
+        )}
         <div className="flex-1 min-h-0 overflow-hidden">
           <PanelGroup direction="horizontal" className="flex-1 min-h-0">
             {/* TOC Panel */}
@@ -149,9 +154,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
             )}
 
             {/* Editor Pane */}
-            {previewMode !== 'preview-only' && (
+            {showEditorPane && (
               <>
-                <Panel defaultSize={showPreview ? 50 : 100} minSize={20} className="min-w-0">
+                <Panel defaultSize={showPreviewPane ? 50 : 100} minSize={20} className="min-w-0">
                   <div className="h-full min-h-0" onPaste={handlePaste}>
                     <CodeMirror
                       value={content}
@@ -170,14 +175,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
                     />
                   </div>
                 </Panel>
-                {showPreview && previewMode === 'split' && (
+                {showPreviewPane && previewMode === 'split' && (
                   <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 transition-colors" />
                 )}
               </>
             )}
 
             {/* Preview Pane */}
-            {showPreview && previewMode !== 'editor-only' && (
+            {showPreviewPane && (
               <Panel defaultSize={previewMode === 'preview-only' ? 100 : 50} minSize={20} className="min-w-0">
                 <div className="h-full min-h-0 overflow-auto">
                   <PreviewPane content={content} />

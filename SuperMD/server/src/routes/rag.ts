@@ -13,6 +13,12 @@ import { smartIndexDocument } from '../services/batchProcessor';
 
 const router = Router();
 
+type RequestWithUser = Request & { user: { userId: string } };
+
+function hasUser(req: Request): req is RequestWithUser {
+  return typeof (req as RequestWithUser).user?.userId === 'string';
+}
+
 // Configure multer for file uploads
 const upload = multer({
   dest: 'uploads/',
@@ -79,6 +85,10 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       return;
     }
 
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const file = req.file;
 
@@ -120,6 +130,10 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
  */
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const documents = await getUserDocuments(userId);
 
@@ -138,6 +152,10 @@ router.get('/documents', async (req: Request, res: Response): Promise<void> => {
 router.delete('/documents/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     await deleteDocument(parseInt(id), userId);
@@ -157,6 +175,10 @@ router.delete('/documents/:id', async (req: Request, res: Response): Promise<voi
 router.post('/search', async (req: Request, res: Response): Promise<void> => {
   try {
     const { query, limit = 5 } = req.body;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     if (!query) {
@@ -181,6 +203,10 @@ router.post('/search', async (req: Request, res: Response): Promise<void> => {
 router.post('/query', async (req: Request, res: Response): Promise<void> => {
   try {
     const { query } = req.body;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     if (!query) {

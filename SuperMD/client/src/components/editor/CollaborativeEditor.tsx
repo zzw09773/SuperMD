@@ -9,7 +9,7 @@ interface CollaborativeEditorProps {
   onChange: (content: string) => void;
 }
 
-const CollaborativeEditor = ({ documentId, content, onChange }: CollaborativeEditorProps) => {
+const CollaborativeEditor = ({ documentId }: CollaborativeEditorProps) => {
   useEffect(() => {
     // Initialize Y.js document and WebSocket provider
     console.log('Collaborative editor for document:', documentId);

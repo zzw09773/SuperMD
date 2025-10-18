@@ -7,8 +7,6 @@ import {
   Link,
   Image,
   Code,
-  Eye,
-  EyeOff,
   ListTree,
   Smile,
   Maximize2,
@@ -18,16 +16,14 @@ import {
 import EmojiPicker from './EmojiPicker';
 
 interface EditorToolbarProps {
-  showPreview: boolean;
   showToc: boolean;
   previewMode: 'split' | 'preview-only' | 'editor-only';
-  onTogglePreview: () => void;
   onToggleToc: () => void;
   onPreviewModeChange: (mode: 'split' | 'preview-only' | 'editor-only') => void;
   onInsert: (text: string, offset?: number) => void;
 }
 
-const EditorToolbar = ({ showPreview, showToc, previewMode, onTogglePreview, onToggleToc, onPreviewModeChange, onInsert }: EditorToolbarProps) => {
+const EditorToolbar = ({ showToc, previewMode, onToggleToc, onPreviewModeChange, onInsert }: EditorToolbarProps) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const toolbarButtons = [

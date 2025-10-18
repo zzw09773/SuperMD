@@ -7,12 +7,22 @@ const router = Router();
 // All chat history routes require authentication
 router.use(authMiddleware);
 
+type RequestWithUser = Request & { user: { userId: string } };
+
+function hasUser(req: Request): req is RequestWithUser {
+  return typeof (req as RequestWithUser).user?.userId === 'string';
+}
+
 /**
  * GET /api/chat-history/:documentId - Get chat history for a document
  */
 router.get('/:documentId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { documentId } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     // Verify user owns the document
@@ -59,6 +69,10 @@ router.get('/:documentId', async (req: Request, res: Response): Promise<void> =>
 router.post('/:documentId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { documentId } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const { role, content, mode = 'chat', sources, ragSources, metadata } = req.body;
 
@@ -115,6 +129,10 @@ router.post('/:documentId', async (req: Request, res: Response): Promise<void> =
 router.delete('/:documentId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { documentId } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     // Verify user owns the document
@@ -148,6 +166,10 @@ router.delete('/:documentId', async (req: Request, res: Response): Promise<void>
 router.delete('/:documentId/:messageId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { documentId, messageId } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     // Verify user owns the document

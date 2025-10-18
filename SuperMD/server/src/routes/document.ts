@@ -11,6 +11,12 @@ import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
 
+type RequestWithUser = Request & { user: { userId: string } };
+
+function hasUser(req: Request): req is RequestWithUser {
+  return typeof (req as RequestWithUser).user?.userId === 'string';
+}
+
 // All document routes require authentication
 router.use(authMiddleware);
 
@@ -19,6 +25,10 @@ router.use(authMiddleware);
  */
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const documents = await getUserDocuments(userId);
     res.json({ documents });
@@ -36,6 +46,10 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const document = await getDocumentById(id, userId);
     res.json({ document });
@@ -53,6 +67,10 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const { title, content, projectId } = req.body;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     if (!title) {
@@ -85,6 +103,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
 router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const { title, content, projectId } = req.body;
 
@@ -112,6 +134,10 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
 router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
 
     await deleteDocument(id, userId);
@@ -131,6 +157,10 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
 router.patch('/:id/move', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!hasUser(req)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     const userId = req.user.userId;
     const { projectId } = req.body; // null to move to ungrouped
 
