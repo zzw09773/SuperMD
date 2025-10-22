@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, lazy, Suspense, useMemo, useCallback } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import MarkdownEditor, { MarkdownEditorRef } from '../editor/MarkdownEditor';
-import ChatBotPanel from '../chat/ChatBotPanel';
 import ProjectSidebar from '../sidebar/ProjectSidebar';
-import RAGDocumentPanel from '../rag/RAGDocumentPanel';
 import ErrorBoundary from '../common/ErrorBoundary';
 import { FileDown, FileText, FileCode, FileType, Download, LogOut, User, Database, Settings } from 'lucide-react';
-import CredentialsModal from '../settings/CredentialsModal';
+
+const ChatBotPanel = lazy(() => import('../chat/ChatBotPanel'));
+const RAGDocumentPanel = lazy(() => import('../rag/RAGDocumentPanel'));
+const CredentialsModal = lazy(() => import('../settings/CredentialsModal'));
 
 interface MainLayoutProps {
   currentDocumentId: string | null;
@@ -23,7 +24,18 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
   const [showSettings, setShowSettings] = useState(false);
   const editorRef = useRef<MarkdownEditorRef | null>(null);
 
-  const handleExport = async (format: 'md' | 'html' | 'pdf' | 'docx' | 'txt') => {
+  const exportFormats = useMemo(
+    () => [
+      { format: 'md' as const, icon: FileText, label: 'Markdown' },
+      { format: 'html' as const, icon: FileCode, label: 'HTML' },
+      { format: 'pdf' as const, icon: FileDown, label: 'PDF' },
+      { format: 'docx' as const, icon: FileType, label: 'DOCX' },
+      { format: 'txt' as const, icon: FileText, label: 'Plain Text' },
+    ],
+    []
+  );
+
+  const handleExport = useCallback(async (format: 'md' | 'html' | 'pdf' | 'docx' | 'txt') => {
     const content = editorRef.current?.getContent() || '';
     const title = currentDocumentId || 'document';
 
@@ -52,15 +64,41 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
       console.error('Export error:', error);
       alert('Export failed. Please try again.');
     }
-  };
+  }, [currentDocumentId, setShowExportMenu]);
 
-  const exportFormats = [
-    { format: 'md' as const, icon: FileText, label: 'Markdown' },
-    { format: 'html' as const, icon: FileCode, label: 'HTML' },
-    { format: 'pdf' as const, icon: FileDown, label: 'PDF' },
-    { format: 'docx' as const, icon: FileType, label: 'DOCX' },
-    { format: 'txt' as const, icon: FileText, label: 'Plain Text' },
-  ];
+  const renderChatPanel = () => (
+    <ErrorBoundary fallbackMessage="AI 助手面板遇到錯誤。請嘗試重新載入。">
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center bg-gray-900 text-sm text-gray-200">
+            Loading AI Assistant...
+          </div>
+        }
+      >
+        <ChatBotPanel
+          documentContent={markdown}
+          documentId={currentDocumentId || undefined}
+          onInsertContent={(content) => {
+            editorRef.current?.insertContent(`\n\n${content}\n\n`);
+          }}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  );
+
+  const renderRagPanel = () => (
+    <ErrorBoundary fallbackMessage="RAG 知識庫面板遇到錯誤。請嘗試重新載入。">
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center bg-gray-900 text-sm text-gray-200">
+            Loading knowledge base...
+          </div>
+        }
+      >
+        <RAGDocumentPanel />
+      </Suspense>
+    </ErrorBoundary>
+  );
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -169,9 +207,7 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
               <>
                 <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-purple-500 transition-colors" />
                 <Panel defaultSize={30} minSize={20} maxSize={50}>
-                  <ErrorBoundary fallbackMessage="RAG 知識庫面板遇到錯誤。請嘗試重新載入。">
-                    <RAGDocumentPanel />
-                  </ErrorBoundary>
+                  {renderRagPanel()}
                 </Panel>
               </>
             )}
@@ -181,16 +217,7 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
               <>
                 <PanelResizeHandle className="w-1 bg-gray-200 dark:bg-gray-700 hover:bg-green-500 transition-colors" />
                 <Panel defaultSize={30} minSize={20} maxSize={50}>
-                  <ErrorBoundary fallbackMessage="AI 助手面板遇到錯誤。請嘗試重新載入。">
-                    <ChatBotPanel
-                      documentContent={markdown}
-                      documentId={currentDocumentId || undefined}
-                      onInsertContent={(content) => {
-                        // Insert content at cursor position in editor
-                        editorRef.current?.insertContent(`\n\n${content}\n\n`);
-                      }}
-                    />
-                  </ErrorBoundary>
+                  {renderChatPanel()}
                 </Panel>
               </>
             )}
@@ -198,10 +225,14 @@ const MainLayout = ({ currentDocumentId, onDocumentSelect, user, onLogout }: Mai
         </div>
       </main>
 
-      <CredentialsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+      {showSettings && (
+        <Suspense fallback={null}>
+          <CredentialsModal
+            isOpen={showSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

@@ -1,18 +1,50 @@
+export interface DebouncedFunction<T extends (...args: any[]) => any> {
+  (...args: Parameters<T>): void;
+  cancel: () => void;
+  flush: () => void;
+}
+
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
-): (...args: Parameters<T>) => void {
+): DebouncedFunction<T> {
   let timeout: NodeJS.Timeout | null = null;
+  let lastArgs: Parameters<T> | null = null;
 
-  return function executedFunction(...args: Parameters<T>) {
+  const debounced = function executedFunction(...args: Parameters<T>) {
+    lastArgs = args;
     const later = () => {
       timeout = null;
-      func(...args);
+      if (lastArgs) {
+        func(...lastArgs);
+        lastArgs = null;
+      }
     };
 
     if (timeout) {
       clearTimeout(timeout);
     }
     timeout = setTimeout(later, wait);
+  } as DebouncedFunction<T>;
+
+  debounced.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+    lastArgs = null;
   };
+
+  debounced.flush = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+    if (lastArgs) {
+      func(...lastArgs);
+      lastArgs = null;
+    }
+  };
+
+  return debounced;
 }

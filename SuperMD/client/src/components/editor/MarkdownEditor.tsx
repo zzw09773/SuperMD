@@ -30,7 +30,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     const [showToc, setShowToc] = useState(false);
     const [previewMode, setPreviewMode] = useState<'split' | 'preview-only' | 'editor-only'>('split');
     const [loading, setLoading] = useState(false);
-    const { saveStatus, triggerSave } = useAutoSave(documentId, content);
+    const { saveStatus, triggerSave, markContentAsSynced } = useAutoSave(documentId, content);
     const { users, isConnected } = useCollaboration(documentId || 'demo');
 
     const showEditorPane = previewMode !== 'preview-only';
@@ -48,7 +48,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     useEffect(() => {
       const loadDocument = async () => {
         if (!documentId) {
-          setContent('# Welcome to SuperMD\n\nStart typing...');
+          const initialContent = '# Welcome to SuperMD\n\nStart typing...';
+          setContent(initialContent);
+          markContentAsSynced(initialContent);
           return;
         }
 
@@ -56,6 +58,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
           setLoading(true);
           const doc = await documentAPI.getById(documentId);
           setContent(doc.content);
+          markContentAsSynced(doc.content);
         } catch (error) {
           console.error('Failed to load document:', error);
           setContent('# Error\n\nFailed to load document.');
@@ -65,7 +68,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
       };
 
       loadDocument();
-    }, [documentId]);
+    }, [documentId, markContentAsSynced]);
 
     useEffect(() => {
       onContentChange?.(content);
@@ -79,7 +82,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     const handleInsert = (text: string, _offset: number = 0) => {
       // Insert text at current cursor position
       // This is a simplified version - in real implementation would use CodeMirror API
-      setContent(content + '\n' + text);
+      setContent((prev) => `${prev}\n${text}`);
+      triggerSave();
     };
 
     // Handle paste event for images
