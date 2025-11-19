@@ -123,3 +123,16 @@ model ChatMessage {
   @@index([documentId])
   @@index([createdAt])
 }
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  content     String   @default("") // Markdown content
+  category    String   @default("General") // "Academic", "Business", "Technical", "General"
+  isSystem    Boolean  @default(false) // System templates cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}

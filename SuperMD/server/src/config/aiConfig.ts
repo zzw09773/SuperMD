@@ -1,4 +1,5 @@
 import https from 'https';
+import { LLMConfig, LLMProvider } from '../lib/llmFactory';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -11,6 +12,39 @@ const trim = (value?: string | null): string | undefined => {
   return normalized ? normalized : undefined;
 };
 
+export const getProviderConfig = (provider: LLMProvider): LLMConfig => {
+  switch (provider) {
+    case 'openai':
+      return {
+        provider: 'openai',
+        apiKey: trim(process.env.OPENAI_API_KEY),
+        modelName: trim(process.env.OPENAI_MODEL) || 'gpt-4o-mini',
+        baseUrl: trim(process.env.OPENAI_BASE_URL),
+      };
+    case 'anthropic':
+      return {
+        provider: 'anthropic',
+        apiKey: trim(process.env.ANTHROPIC_API_KEY),
+        modelName: trim(process.env.ANTHROPIC_MODEL) || 'claude-3-5-sonnet-20240620',
+      };
+    case 'google':
+      return {
+        provider: 'google',
+        apiKey: trim(process.env.GOOGLE_API_KEY),
+        modelName: trim(process.env.GOOGLE_MODEL) || 'gemini-1.5-pro',
+      };
+    case 'ollama':
+      return {
+        provider: 'ollama',
+        modelName: trim(process.env.OLLAMA_MODEL) || 'llama3',
+        baseUrl: trim(process.env.OLLAMA_BASE_URL) || 'http://localhost:11434',
+      };
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
+};
+
+// Legacy support for existing code
 export interface AIEndpointConfig {
   apiKey?: string;
   baseURL?: string;
@@ -25,7 +59,7 @@ export const getLLMConfig = (): AIEndpointConfig => {
   const modelName =
     trim(process.env.LLM_MODEL) ??
     trim(process.env.OPENAI_MODEL) ??
-    'gpt-5';
+    'gpt-4o-mini';
 
   return {
     apiKey:

@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -55,7 +55,7 @@ class ErrorBoundary extends Component<Props, State> {
               {this.props.fallbackMessage || '這個組件遇到了一個錯誤。請嘗試重新載入。'}
             </p>
 
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <details className="mb-4 text-left">
                 <summary className="cursor-pointer text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                   錯誤詳情（開發模式）

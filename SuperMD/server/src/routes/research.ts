@@ -96,4 +96,53 @@ router.get('/status', (_req: Request, res: Response): Promise<void> => {
   return Promise.resolve();
 });
 
+import { generateReport } from '../agents/reportAgent';
+import { getProviderConfig } from '../config/aiConfig';
+import { LLMProvider } from '../lib/llmFactory';
+
+// Generate full report
+router.post('/generate-report', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { topic, template, provider, model } = req.body;
+
+    if (!topic || !template) {
+      res.status(400).json({ error: 'Topic and template are required' });
+      return;
+    }
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const llmConfig = getProviderConfig((provider as LLMProvider) || 'openai');
+    if (model) llmConfig.modelName = model;
+
+    console.log(`[Report API] Generating report on "${topic}" using ${llmConfig.provider}/${llmConfig.modelName}`);
+
+    const report = await generateReport(
+      topic,
+      template,
+      llmConfig,
+      (progress) => {
+        res.write(`data: ${JSON.stringify({ type: 'progress', message: progress })}\n\n`);
+      }
+    );
+
+    res.write(`data: ${JSON.stringify({ type: 'complete', content: report })}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+
+  } catch (error) {
+    console.error('[Report API] Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Report generation failed' });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: 'Report generation failed' })}\n\n`);
+      res.end();
+    }
+  }
+});
+
 export default router;

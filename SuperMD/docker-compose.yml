@@ -1,6 +1,34 @@
 version: '3.8'
 
 services:
+  server:
+    build: ./server
+    container_name: supermd-server
+    env_file:
+      - ./server/.env
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/supermd
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "13000:3000"
+    volumes:
+      - server-uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  client:
+    build: ./client
+    container_name: supermd-client
+    ports:
+      - "15173:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
   # PostgreSQL with pgvector extension for RAG functionality
   postgres:
     image: ankane/pgvector:latest
@@ -40,6 +68,8 @@ volumes:
   postgres-data:
     driver: local
   redis-data:
+    driver: local
+  server-uploads:
     driver: local
 
 networks:

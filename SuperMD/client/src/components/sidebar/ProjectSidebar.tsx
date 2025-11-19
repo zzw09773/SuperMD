@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Folder, FolderPlus, File, ChevronRight, ChevronDown, Edit2, Trash2, X, Check, Plus, RefreshCw } from 'lucide-react';
+import { Folder, FolderPlus, File, ChevronRight, ChevronDown, Edit2, Trash2, X, Check, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { projectAPI, documentAPI, type Project as APIProject, type Document as APIDocument } from '../../services/api';
+import ReportGeneratorModal from '../report/ReportGeneratorModal';
 
 interface Document extends APIDocument {
   folderId?: string | null;
@@ -35,6 +36,7 @@ const ProjectSidebar = ({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingProjectName, setEditingProjectName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   // Load projects and documents from backend
   useEffect(() => {
@@ -243,6 +245,81 @@ const ProjectSidebar = ({
     }
   };
 
+  const handleGenerateReport = async (topic: string, template: string, provider: string, model: string) => {
+    try {
+      // Create a placeholder document first
+      const newDoc = await documentAPI.create({
+        title: topic,
+        content: `# ${topic}\n\n*Generating report...*`,
+      });
+      setUngroupedDocs([newDoc, ...ungroupedDocs]);
+      onDocumentSelect(newDoc.id);
+
+      // Trigger generation via SSE
+      const token = localStorage.getItem('token');
+      const eventSource = new EventSource(
+        `http://localhost:3000/api/research/generate-report?token=${token}`
+      );
+
+      // Since EventSource doesn't support POST body easily, we might need to use fetch for the trigger
+      // or pass params in URL. For large templates, POST is better.
+      // Let's use fetch to trigger and get a stream reader.
+
+      eventSource.close(); // Close the one we just opened incorrectly
+
+      const response = await fetch('http://localhost:3000/api/research/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ topic, template, provider, model })
+      });
+
+      if (!response.body) throw new Error('No response body');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6);
+            if (dataStr === '[DONE]') break;
+
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'progress') {
+                // Update status in UI if needed
+                console.log(data.message);
+              } else if (data.type === 'complete') {
+                fullContent = data.content;
+                // Update document with final content
+                await documentAPI.update(newDoc.id, { content: fullContent });
+                // Refresh local state
+                onDocumentSelect(null); // Force refresh
+                setTimeout(() => onDocumentSelect(newDoc.id), 50);
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data', e);
+            }
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      alert('Failed to generate report');
+    }
+  };
+
   const deleteDocument = async (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
@@ -322,13 +399,20 @@ const ProjectSidebar = ({
       </div>
 
       {/* New Document Button */}
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="p-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
         <button
           onClick={createNewDocument}
           className="w-full px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center justify-center gap-2 text-sm font-medium"
         >
           <Plus className="w-4 h-4" />
           New Document
+        </button>
+        <button
+          onClick={() => setIsReportModalOpen(true)}
+          className="w-full px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center justify-center gap-2 text-sm font-medium"
+        >
+          <Sparkles className="w-4 h-4" />
+          AI Report
         </button>
       </div>
 
@@ -439,11 +523,10 @@ const ProjectSidebar = ({
                       draggable
                       onDragStart={() => handleDragStart(doc)}
                       onClick={() => onDocumentSelect(doc.id)}
-                      className={`group/doc flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${
-                        currentDocumentId === doc.id
+                      className={`group/doc flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${currentDocumentId === doc.id
                           ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                           : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                      }`}
+                        }`}
                     >
                       <File className="w-3 h-3" />
                       <span className="flex-1 text-sm truncate">{doc.title}</span>
@@ -483,11 +566,10 @@ const ProjectSidebar = ({
                 draggable
                 onDragStart={() => handleDragStart(doc)}
                 onClick={() => onDocumentSelect(doc.id)}
-                className={`group/doc flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${
-                  currentDocumentId === doc.id
+                className={`group/doc flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${currentDocumentId === doc.id
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
+                  }`}
               >
                 <File className="w-3 h-3" />
                 <span className="flex-1 text-sm truncate">{doc.title}</span>
@@ -508,6 +590,12 @@ const ProjectSidebar = ({
           </div>
         </div>
       </div>
+
+      <ReportGeneratorModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        onGenerate={handleGenerateReport}
+      />
     </aside>
   );
 };
