@@ -23,7 +23,7 @@ const embeddings = new OpenAIEmbeddings({
  */
 export const chunkText = async (
   text: string,
-  chunkSize: number = 1000,
+  chunkSize: number = 800,
   chunkOverlap: number = 200
 ): Promise<string[]> => {
   const splitter = new RecursiveCharacterTextSplitter({
@@ -86,7 +86,7 @@ export const indexDocument = async (
     await client.query('COMMIT');
 
     // Invalidate all search caches for this user
-    await cacheService.deletePattern(`rag:search:*`);
+    await cacheService.deletePattern(`rag:search:${userId}:*`);
 
     console.log(`✅ Document indexed successfully (ID: ${documentId}) and cache invalidated`);
 
@@ -105,7 +105,7 @@ export const indexDocument = async (
  */
 const generateCacheKey = (query: string, userId: string, limit: number): string => {
   const hash = crypto.createHash('md5').update(`${query}:${userId}:${limit}`).digest('hex');
-  return `rag:search:${hash}`;
+  return `rag:search:${userId}:${hash}`;
 };
 
 /**
@@ -114,7 +114,7 @@ const generateCacheKey = (query: string, userId: string, limit: number): string 
 export const searchSimilarDocuments = async (
   query: string,
   userId: string,
-  limit: number = 5
+  limit: number = 3
 ): Promise<
   Array<{
     content: string;
@@ -140,9 +140,10 @@ export const searchSimilarDocuments = async (
     // Create query embedding
     const queryEmbedding = await embeddings.embedQuery(query);
 
-    // Search for similar vectors
-    const result = await client.query(
-      `SELECT
+    // 1. Vector Search
+    const vectorQuery = `
+      SELECT
+        e.id,
         e.content,
         e.metadata,
         d.file_name,
@@ -151,11 +152,58 @@ export const searchSimilarDocuments = async (
        JOIN rag_documents d ON e.document_id = d.id
        WHERE d.user_id = $2
        ORDER BY e.embedding <=> $1::vector
-       LIMIT $3`,
-      [JSON.stringify(queryEmbedding), userId, limit]
-    );
+       LIMIT $3
+    `;
+    
+    const vectorResult = await client.query(vectorQuery, [JSON.stringify(queryEmbedding), userId, limit]);
 
-    const searchResults = result.rows.map((row) => ({
+    // 2. Keyword Search (Basic Full-Text)
+    // Note: This is slower without a TSVECTOR index, but functional for smaller datasets.
+    // We give keyword matches a fixed high similarity score to boost them if they aren't in vector results.
+    const keywordQuery = `
+      SELECT
+        e.id,
+        e.content,
+        e.metadata,
+        d.file_name,
+        0.8 as similarity
+       FROM rag_embeddings e
+       JOIN rag_documents d ON e.document_id = d.id
+       WHERE d.user_id = $2
+       AND to_tsvector('english', e.content) @@ plainto_tsquery('english', $1)
+       LIMIT $3
+    `;
+
+    // Run keyword search only if query has text
+    let keywordRows: any[] = [];
+    if (query.trim().length > 0) {
+        try {
+            const keywordResult = await client.query(keywordQuery, [query, userId, limit]);
+            keywordRows = keywordResult.rows;
+        } catch (err) {
+            console.warn('Keyword search failed (likely syntax), falling back to vector only:', err);
+        }
+    }
+
+    // 3. Merge & Deduplicate (Hybrid)
+    const combinedMap = new Map<number, any>();
+    
+    // Add Vector Results first (priority)
+    vectorResult.rows.forEach((row) => combinedMap.set(row.id, row));
+    
+    // Add Keyword Results if not present
+    keywordRows.forEach((row) => {
+        if (!combinedMap.has(row.id)) {
+            combinedMap.set(row.id, row);
+        }
+    });
+
+    // Convert to array and sort by similarity
+    const mergedRows = Array.from(combinedMap.values())
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+
+    const searchResults = mergedRows.map((row) => ({
       content: row.content,
       similarity: parseFloat(row.similarity),
       fileName: row.file_name,
@@ -246,7 +294,7 @@ export const deleteDocument = async (
     }
 
     // Invalidate all search caches for this user
-    await cacheService.deletePattern(`rag:search:*`);
+    await cacheService.deletePattern(`rag:search:${userId}:*`);
 
     console.log(`✅ Document ${documentId} deleted and cache invalidated`);
   } catch (error) {

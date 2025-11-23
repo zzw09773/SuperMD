@@ -42,7 +42,7 @@ export const wikipediaSearchTool = new DynamicStructuredTool({
 
       results.forEach((item: any, index: number) => {
         formattedResults += `${index + 1}. **${item.title}**\n`;
-        formattedResults += `   ${item.snippet.replace(/<[^>]*>/g, '')}\n`;
+        formattedResults += `   ${item.snippet.replace(/<[^>]*>/g, '').substring(0, 400)}...\n`;
         formattedResults += `   🔗 https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}\n\n`;
       });
 
@@ -73,7 +73,7 @@ export const arxivSearchTool = new DynamicStructuredTool({
         params: {
           search_query: `all:${query}`,
           start: 0,
-          max_results: 5,
+          max_results: 3,
         },
       });
 
@@ -134,7 +134,7 @@ export const stackOverflowSearchTool = new DynamicStructuredTool({
           sort: 'relevance',
           q: query,
           site: 'stackoverflow',
-          pagesize: 5,
+          pagesize: 3,
         },
       });
 
@@ -180,7 +180,7 @@ export const githubSearchTool = new DynamicStructuredTool({
           q: query,
           sort: 'stars',
           order: 'desc',
-          per_page: 5,
+          per_page: 3,
         },
         headers: {
           'Accept': 'application/vnd.github.v3+json',

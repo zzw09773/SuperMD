@@ -3,6 +3,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import authRouter from './routes/auth';
 import documentsRouter from './routes/documents';
 import foldersRouter from './routes/folders';
@@ -16,6 +18,8 @@ import chatHistoryRouter from './routes/chatHistory';
 import uploadRouter from './routes/upload';
 import { initializePgVector } from './lib/pgvector';
 import { initializeRedis } from './lib/redis';
+import { errorHandler } from './middleware/errorHandler';
+import { logger } from './lib/logger';
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +27,19 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
+
+// Security Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" } // Allow images to be served
+}));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 1000, // Limit each IP to 1000 requests per window (increased for realtime app)
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+app.use(limiter);
 
 // Middleware
 app.use(cors({
@@ -48,7 +65,7 @@ const io = new Server(httpServer, {
 const activeDocuments = new Map<string, Set<string>>();
 
 io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
+  logger.info(`[Socket] Client connected: ${socket.id}`);
 
   // Join document room
   socket.on('join-document', (documentId: string) => {
@@ -59,8 +76,8 @@ io.on('connection', (socket) => {
     }
     activeDocuments.get(documentId)!.add(socket.id);
 
-    console.log(`[Socket] Client ${socket.id} joined document: ${documentId}`);
-    console.log(`[Socket] Active users in ${documentId}: ${activeDocuments.get(documentId)!.size}`);
+    logger.info(`[Socket] Client ${socket.id} joined document: ${documentId}`);
+    logger.info(`[Socket] Active users in ${documentId}: ${activeDocuments.get(documentId)!.size}`);
 
     // Notify others in the room
     socket.to(documentId).emit('user-joined', {
@@ -93,13 +110,25 @@ io.on('connection', (socket) => {
       }
     }
 
-    console.log(`[Socket] Client ${socket.id} left document: ${documentId}`);
+    logger.info(`[Socket] Client ${socket.id} left document: ${documentId}`);
   });
 
   // Handle Y.js sync messages
   socket.on('sync-update', ({ documentId, update }: { documentId: string; update: Uint8Array }) => {
     // Broadcast to all other clients in the document room
     socket.to(documentId).emit('sync-update', { update });
+  });
+
+  // Handle sync request from new client
+  socket.on('sync-request', ({ documentId }: { documentId: string }) => {
+    // Ask others to send their state
+    socket.to(documentId).emit('sync-request', { requesterId: socket.id });
+  });
+
+  // Handle sync response (full state) from another client
+  socket.on('sync-response', ({ targetId, update }: { targetId: string; update: Uint8Array }) => {
+    // Send state to the requester
+    io.to(targetId).emit('sync-update', { update });
   });
 
   // Handle awareness updates (cursor position, selection)
@@ -109,7 +138,7 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
+    logger.info(`[Socket] Client disconnected: ${socket.id}`);
 
     // Clean up from all document rooms
     activeDocuments.forEach((clients, documentId) => {
@@ -161,12 +190,15 @@ app.use('/api/rag', ragRouter); // Agentic RAG routes
 app.use('/api/chat-history', chatHistoryRouter); // Chat history routes
 app.use('/api', uploadRouter); // Upload routes (image upload)
 
+// Global Error Handler
+app.use(errorHandler);
+
 // Start server and initialize pgvector
 httpServer.listen(PORT, async () => {
-  console.log(`🚀 SuperMD Server running on http://localhost:${PORT}`);
-  console.log(`💚 Health check: http://localhost:${PORT}/health`);
-  console.log(`📡 API endpoint: http://localhost:${PORT}/api`);
-  console.log(`🔌 WebSocket server ready`);
+  logger.info(`🚀 SuperMD Server running on http://localhost:${PORT}`);
+  logger.info(`💚 Health check: http://localhost:${PORT}/health`);
+  logger.info(`📡 API endpoint: http://localhost:${PORT}/api`);
+  logger.info(`🔌 WebSocket server ready`);
 
   // Initialize Redis cache
   await initializeRedis();
@@ -174,20 +206,20 @@ httpServer.listen(PORT, async () => {
   // Initialize PostgreSQL pgvector
   try {
     await initializePgVector();
-    console.log(`🧠 Agentic RAG system ready`);
+    logger.info(`🧠 Agentic RAG system ready`);
   } catch (error) {
-    console.error(`⚠️  PgVector initialization failed. RAG features may not work.`);
-    console.error(`   Make sure PostgreSQL is running with pgvector extension installed.`);
+    logger.error(`⚠️  PgVector initialization failed. RAG features may not work.`);
+    logger.error(`   Make sure PostgreSQL is running with pgvector extension installed.`);
   }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
+  logger.info('SIGTERM signal received: closing HTTP server');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('\nSIGINT signal received: closing HTTP server');
+  logger.info('\nSIGINT signal received: closing HTTP server');
   process.exit(0);
 });

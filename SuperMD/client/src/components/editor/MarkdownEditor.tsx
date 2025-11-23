@@ -1,9 +1,12 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion } from '@codemirror/autocomplete';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import * as Y from 'yjs';
+import { yCollab } from 'y-codemirror.next';
+
 import PreviewPane from './PreviewPane';
 import TableOfContents from './TableOfContents';
 import EditorToolbar from './EditorToolbar';
@@ -13,6 +16,7 @@ import useAutoSave from '../../hooks/useAutoSave';
 import useCollaboration from '../../hooks/useCollaboration';
 import { documentAPI } from '../../services/api';
 import { markdownAutocomplete } from '../../utils/markdownAutocomplete';
+import { YjsSocketIOProvider } from '../../utils/YjsSocketIOProvider';
 
 interface MarkdownEditorProps {
   documentId: string | null;
@@ -30,8 +34,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     const [showToc, setShowToc] = useState(false);
     const [previewMode, setPreviewMode] = useState<'split' | 'preview-only' | 'editor-only'>('split');
     const [loading, setLoading] = useState(false);
+    
+    // Y.js State
+    const [yDoc, setYDoc] = useState<Y.Doc | null>(null);
+    const [provider, setProvider] = useState<YjsSocketIOProvider | null>(null);
+    const [yUndoManager, setYUndoManager] = useState<Y.UndoManager | null>(null);
+
     const { saveStatus, triggerSave } = useAutoSave(documentId, content);
-    const { users, isConnected } = useCollaboration(documentId || 'demo');
+    const { socket, users, isConnected } = useCollaboration(documentId || 'demo');
 
     const showEditorPane = previewMode !== 'preview-only';
     const showPreviewPane = previewMode !== 'editor-only';
@@ -39,47 +49,90 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
     useImperativeHandle(ref, () => ({
       getContent: () => content,
       insertContent: (text: string) => {
-        setContent((prev) => prev + text);
+        if (yDoc) {
+            const yText = yDoc.getText('codemirror');
+            yText.insert(yText.length, '\n' + text);
+        } else {
+            setContent((prev) => prev + text);
+        }
         triggerSave();
       },
     }));
 
-    // Load document from API when documentId changes
+    // Initialize Y.js and Provider
     useEffect(() => {
-      const loadDocument = async () => {
-        if (!documentId) {
-          setContent('# Welcome to SuperMD\n\nStart typing...');
-          return;
-        }
+      if (!documentId || !socket) return;
 
+      const doc = new Y.Doc();
+      const yText = doc.getText('codemirror');
+      const undoManager = new Y.UndoManager(yText);
+      const prov = new YjsSocketIOProvider(socket, documentId, doc);
+
+      setYDoc(doc);
+      setYUndoManager(undoManager);
+      setProvider(prov);
+
+      // Sync Y.js to React State (for Preview/TOC)
+      doc.on('update', () => {
+        const newContent = yText.toString();
+        setContent(newContent);
+        triggerSave(); // Trigger auto-save on remote changes too? Maybe debatable.
+      });
+
+      // Initial Load Strategy
+      const initContent = async () => {
         try {
-          setLoading(true);
-          const doc = await documentAPI.getById(documentId);
-          setContent(doc.content);
+            setLoading(true);
+            const apiDoc = await documentAPI.getById(documentId);
+            
+            // Only populate if doc is empty (avoid overwriting collaborative work)
+            // Ideally, we check if we are the "first" or if the room is empty.
+            if (yText.toString().length === 0) {
+                doc.transact(() => {
+                    yText.insert(0, apiDoc.content);
+                }, 'initial-load');
+            }
         } catch (error) {
-          console.error('Failed to load document:', error);
-          setContent('# Error\n\nFailed to load document.');
+            console.error('Failed to load document:', error);
         } finally {
-          setLoading(false);
+            setLoading(false);
         }
       };
 
-      loadDocument();
-    }, [documentId]);
+      initContent();
+
+      return () => {
+        prov.destroy();
+        doc.destroy();
+      };
+    }, [documentId, socket]);
 
     useEffect(() => {
       onContentChange?.(content);
     }, [content, onContentChange]);
 
+    // Handle manual CodeMirror changes (if not using Y.js, fallback)
     const handleChange = (value: string) => {
-      setContent(value);
-      triggerSave();
+      // If Y.js is active, this is handled by y-codemirror extensions.
+      // But we still update local state for fallback or if extension doesn't block this?
+      // Actually, if Y.js is hooked, we shouldn't manually setContent from here 
+      // to avoid loops, BUT CodeMirror's onChange is triggered by Y.js updates too.
+      // We guard this by checking if the change came from Y.js (remote) or user.
+      // For now, rely on the doc.on('update') listener above for content Source of Truth.
+      // So this handler might be redundant if Y.js is active.
+      if (!yDoc) {
+          setContent(value);
+          triggerSave();
+      }
     };
 
     const handleInsert = (text: string, _offset: number = 0) => {
-      // Insert text at current cursor position
-      // This is a simplified version - in real implementation would use CodeMirror API
-      setContent(content + '\n' + text);
+      if (yDoc) {
+          const yText = yDoc.getText('codemirror');
+          yText.insert(yText.length, '\n' + text);
+      } else {
+          setContent(content + '\n' + text);
+      }
     };
 
     // Handle paste event for images
@@ -100,6 +153,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
             formData.append('documentId', documentId || 'temp');
 
             const token = localStorage.getItem('token');
+            // Fix: Use relative URL or config
             const response = await fetch('http://localhost:3000/api/upload-image', {
               method: 'POST',
               headers: {
@@ -114,8 +168,14 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
 
             // Insert image markdown
             const imageMarkdown = `\n![image](${url})\n`;
-            setContent((prev) => prev + imageMarkdown);
-            triggerSave();
+            
+            if (yDoc) {
+                const yText = yDoc.getText('codemirror');
+                yText.insert(yText.length, imageMarkdown);
+            } else {
+                setContent((prev) => prev + imageMarkdown);
+            }
+            
           } catch (error) {
             console.error('Image upload error:', error);
             alert('Failed to upload image');
@@ -123,6 +183,28 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
         }
       }
     };
+
+    // Extensions
+    const extensions = [
+        markdown(),
+        autocompletion({
+            override: [markdownAutocomplete],
+            activateOnTyping: true,
+            maxRenderedOptions: 10,
+        }),
+    ];
+
+    if (provider && yDoc && users.length > 0) {
+        // Add user color logic if needed
+        const userColor = { color: '#30bced', light: '#30bced33' }; // Example
+        provider.awareness.setLocalStateField('user', {
+            name: 'You',
+            color: userColor.color,
+            colorLight: userColor.light,
+        });
+        
+        extensions.push(yCollab(yDoc.getText('codemirror'), provider.awareness, { undoManager: yUndoManager || undefined }));
+    }
 
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -159,17 +241,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>(
                 <Panel defaultSize={showPreviewPane ? 50 : 100} minSize={20} className="min-w-0">
                   <div className="h-full min-h-0" onPaste={handlePaste}>
                     <CodeMirror
-                      value={content}
+                      value={yDoc ? undefined : content} // If Y.js is active, let it control value
                       height="100%"
                       theme={oneDark}
-                      extensions={[
-                        markdown(),
-                        autocompletion({
-                          override: [markdownAutocomplete],
-                          activateOnTyping: true,
-                          maxRenderedOptions: 10,
-                        }),
-                      ]}
+                      extensions={extensions}
                       onChange={handleChange}
                       className="h-full"
                     />
